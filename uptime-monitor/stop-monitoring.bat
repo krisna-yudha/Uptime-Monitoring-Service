@@ -17,21 +17,30 @@ if %errorlevel% equ 0 (
 )
 
 REM Stop Queue Worker  
-echo [%time%] Stopping Queue Worker...
-taskkill /fi "windowtitle eq Queue Worker*" /f >nul 2>&1
+echo [%time%] Stopping Monitor Checks Worker...
+taskkill /fi "windowtitle eq Monitor Checks Worker*" /f >nul 2>&1
 if %errorlevel% equ 0 (
-    echo  ^> Queue Worker stopped successfully
+    echo  ^> Monitor Checks Worker stopped successfully
 ) else (
-    echo  ^> Queue Worker was not running
+    echo  ^> Monitor Checks Worker was not running
 )
 
-REM Stop Scheduler
-echo [%time%] Stopping Monitor Checks...
-taskkill /fi "windowtitle eq Monitor Checks*" /f /t >nul 2>&1
+REM Stop Notification Worker
+echo [%time%] Stopping Notification Worker...
+taskkill /fi "windowtitle eq Notification Worker*" /f >nul 2>&1
 if %errorlevel% equ 0 (
-    echo  ^> Monitor Checks stopped successfully
+    echo  ^> Notification Worker stopped successfully
 ) else (
-    echo  ^> Monitor Checks was not running
+    echo  ^> Notification Worker was not running
+)
+
+REM Stop Frontend Server
+echo [%time%] Stopping Frontend Server...
+taskkill /fi "windowtitle eq Frontend Server*" /f >nul 2>&1
+if %errorlevel% equ 0 (
+    echo  ^> Frontend Server stopped successfully
+) else (
+    echo  ^> Frontend Server was not running
 )
 
 echo.

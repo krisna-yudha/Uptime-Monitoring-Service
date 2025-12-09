@@ -31,10 +31,10 @@ class SendNotification implements ShouldQueue
 
     protected Monitor $monitor;
     protected string $type; // 'down', 'up', 'test', 'critical_down'
-    protected ?Incident $incident;
-    protected ?NotificationChannel $channel;
-    protected ?string $customMessage;
-    protected array $metadata;
+    protected ?Incident $incident = null;
+    protected ?NotificationChannel $channel = null;
+    protected ?string $customMessage = null;
+    protected array $metadata = [];
 
     /**
      * Create a new job instance.
@@ -113,7 +113,7 @@ class SendNotification implements ShouldQueue
             return [];
         }
 
-        return NotificationChannel::whereIn('id', $channelIds)->get()->toArray();
+        return NotificationChannel::whereIn('id', $channelIds)->get()->all();
     }
 
     protected function sendToChannel(NotificationChannel $channel): void
