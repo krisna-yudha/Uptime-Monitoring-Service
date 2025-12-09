@@ -603,15 +603,37 @@ export default {
 
 <style scoped>
 .monitor-logs {
-  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6;
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .monitor-logs {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .monitor-logs {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
 }
 
 .logs-header {
-  @apply mb-6;
+  margin-bottom: 1.5rem;
 }
 
 .logs-content {
-  @apply space-y-6;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 /* Custom scrollbar for modal */

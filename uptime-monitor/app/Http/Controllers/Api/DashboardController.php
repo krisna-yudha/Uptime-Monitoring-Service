@@ -9,6 +9,7 @@ use App\Models\Incident;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
@@ -18,66 +19,45 @@ class DashboardController extends Controller
      */
     public function overview(): JsonResponse
     {
-        $user = auth('api')->user();
-        
-        // Base query for user's monitors
-        $monitorsQuery = Monitor::query()
-            ->when(!$user->is_admin, function ($q) use ($user) {
-                return $q->where('created_by', $user->id);
-            });
+        try {
+            $user = auth('api')->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
 
-        // Total monitors
-        $totalMonitors = $monitorsQuery->count();
-        
-        // Monitors by status
-        $monitorsByStatus = $monitorsQuery->select('last_status', DB::raw('count(*) as count'))
-            ->groupBy('last_status')
-            ->get()
-            ->pluck('count', 'last_status')
-            ->toArray();
+            // For now, return static data to test connectivity
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'total_monitors' => 0,
+                    'monitors_by_status' => [
+                        'up' => 0,
+                        'down' => 0,
+                        'unknown' => 0,
+                    ],
+                    'monitors_up' => 0,
+                    'monitors_down' => 0,
+                    'open_incidents' => 0,
+                    'active_incidents' => 0,
+                    'current_incidents' => [],
+                    'recent_checks_24h' => 0,
+                    'avg_response_time_ms' => null,
+                ]
+            ]);
 
-        // Active incidents
-        $activeIncidents = Incident::whereHas('monitor', function ($q) use ($user) {
-                if (!$user->is_admin) {
-                    $q->where('created_by', $user->id);
-                }
-            })
-            ->where('resolved', false)
-            ->count();
-
-        // Recent checks (last 24h)
-        $recentChecks = MonitorCheck::whereHas('monitor', function ($q) use ($user) {
-                if (!$user->is_admin) {
-                    $q->where('created_by', $user->id);
-                }
-            })
-            ->where('checked_at', '>=', now()->subDay())
-            ->count();
-
-        // Average response time (last 24h)
-        $avgResponseTime = MonitorCheck::whereHas('monitor', function ($q) use ($user) {
-                if (!$user->is_admin) {
-                    $q->where('created_by', $user->id);
-                }
-            })
-            ->where('checked_at', '>=', now()->subDay())
-            ->where('status', 'up')
-            ->avg('latency_ms');
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'total_monitors' => $totalMonitors,
-                'monitors_by_status' => [
-                    'up' => $monitorsByStatus['up'] ?? 0,
-                    'down' => $monitorsByStatus['down'] ?? 0,
-                    'unknown' => $monitorsByStatus['unknown'] ?? 0,
-                ],
-                'active_incidents' => $activeIncidents,
-                'recent_checks_24h' => $recentChecks,
-                'avg_response_time_ms' => $avgResponseTime ? round($avgResponseTime, 2) : null,
-            ]
-        ]);
+        } catch (\Exception $e) {
+            Log::error('Dashboard overview error: ' . $e->getMessage());
+            Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Internal server error: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

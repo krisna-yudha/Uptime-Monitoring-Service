@@ -71,7 +71,7 @@ class MonitorController extends Controller
             'group_config' => 'nullable|array',
             'type' => 'required|in:http,https,tcp,ping,keyword,push',
             'target' => 'required|string',
-            'interval_seconds' => 'sometimes|integer|min:10|max:3600',
+            'interval_seconds' => 'sometimes|integer|min:1|max:3600',
             'timeout_ms' => 'sometimes|integer|min:1000|max:30000',
             'retries' => 'sometimes|integer|min:1|max:5',
             'enabled' => 'sometimes|boolean',
@@ -89,6 +89,11 @@ class MonitorController extends Controller
 
         $data = $validator->validated();
         $data['created_by'] = auth('api')->id();
+        
+        // Set default interval to 1 second for realtime monitoring if not provided
+        if (!isset($data['interval_seconds'])) {
+            $data['interval_seconds'] = 1;
+        }
         
         // Generate heartbeat key for push monitors
         if ($data['type'] === 'push') {
@@ -151,7 +156,7 @@ class MonitorController extends Controller
             'name' => 'sometimes|string|max:255',
             'type' => 'sometimes|in:http,https,tcp,ping,keyword,push',
             'target' => 'sometimes|string',
-            'interval_seconds' => 'sometimes|integer|min:10|max:3600',
+            'interval_seconds' => 'sometimes|integer|min:1|max:3600',
             'timeout_ms' => 'sometimes|integer|min:1000|max:30000',
             'retries' => 'sometimes|integer|min:1|max:5',
             'enabled' => 'sometimes|boolean',

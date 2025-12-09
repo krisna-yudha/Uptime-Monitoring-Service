@@ -21,6 +21,16 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Test endpoint for server connectivity (no auth required)
+Route::get('/test', function () {
+    return response()->json([
+        'success' => true,
+        'message' => 'Server is running',
+        'timestamp' => now(),
+        'server' => 'Laravel ' . app()->version()
+    ]);
+});
+
 // Public routes
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
@@ -82,6 +92,19 @@ Route::middleware('auth:api')->group(function () {
             Route::get('stats', [MonitoringLogController::class, 'getLogStats']);
             Route::get('export', [MonitoringLogController::class, 'exportLogs']);
         });
+    });
+
+    // Incident management routes
+    Route::prefix('incidents')->group(function () {
+        Route::get('/', [IncidentController::class, 'index']);
+        Route::get('{incident}', [IncidentController::class, 'show']);
+        Route::post('{incident}/pending', [IncidentController::class, 'markPending']);
+        Route::post('{incident}/done', [IncidentController::class, 'markDone']);
+        Route::post('{incident}/acknowledge', [IncidentController::class, 'acknowledge']);
+        Route::post('{incident}/resolve', [IncidentController::class, 'resolve']);
+        Route::post('{incident}/reopen', [IncidentController::class, 'reopen']);
+        Route::post('{incident}/notes', [IncidentController::class, 'addNote']);
+        Route::get('{incident}/alert-log', [IncidentController::class, 'getAlertLog']);
     });
 });
 

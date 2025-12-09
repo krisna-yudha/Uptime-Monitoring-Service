@@ -83,7 +83,6 @@
           <select 
             id="status-filter"
             v-model="filters.status" 
-            @change="onStatusChange"
             class="form-control modern-select"
           >
             <option value="">All Status</option>
@@ -91,6 +90,7 @@
             <option value="down">Down</option>
             <option value="unknown">Unknown</option>
             <option value="invalid">Invalid</option>
+            <option value="validating">Validating</option>
           </select>
         </div>
         
@@ -99,7 +99,6 @@
           <select 
             id="type-filter"
             v-model="filters.type" 
-            @change="fetchData"
             class="form-control modern-select"
           >
             <option value="">All Types</option>
@@ -112,7 +111,7 @@
           </select>
         </div>
         
-        <div class="filter-group">
+        <!-- <div class="filter-group">
           <label for="enabled-filter" class="form-label">Enabled:</label>
           <select 
             id="enabled-filter"
@@ -124,9 +123,9 @@
             <option value="true">Enabled</option>
             <option value="false">Disabled</option>
           </select>
-        </div>
+        </div> -->
         
-        <div class="filter-group">
+        <!-- <div class="filter-group">
           <label for="group-filter" class="form-label">Group:</label>
           <select 
             id="group-filter"
@@ -140,9 +139,9 @@
               {{ group.group_name }} ({{ group.monitors_count }})
             </option>
           </select>
-        </div>
+        </div> -->
         
-        <div class="filter-group search-group">
+        <!-- <div class="filter-group search-group">
           <label for="search-filter" class="form-label">Search:</label>
           <div class="search-input-wrapper">
             <input
@@ -155,21 +154,21 @@
             >
             <i class="fas fa-search search-icon"></i>
           </div>
-        </div>
+        </div> -->
 
-        <div class="filter-group">
-          <label for="view-mode" class="form-label">View:</label>
-          <select 
-            id="view-mode"
-            v-model="viewMode" 
-            @change="fetchData"
-            class="form-control modern-select"
-          >
-            <option value="grouped">📁 Grouped View</option>
-            <option value="list">📋 List View</option>
-            <option value="grid">🔲 Grid View</option>
-          </select>
-        </div>
+          <!-- <div class="filter-group">
+            <label for="view-mode" class="form-label">View:</label>
+            <select 
+              id="view-mode"
+              v-model="viewMode" 
+              @change="fetchData"
+              class="form-control modern-select"
+            >
+              <option value="grouped">📁 Grouped View</option>
+              <option value="list">📋 List View</option>
+              <option value="grid">🔲 Grid View</option>
+            </select>
+          </div> -->
       </div>
     </div>
 
@@ -188,7 +187,9 @@
       <div
         v-for="monitor in filteredMonitors"
         :key="monitor.id"
-        class="monitor-card-grid"
+        class="monitor-card-grid clickable"
+        @click="navigateToDetails(monitor.id)"
+        title="Click to view monitor details"
       >
         <div class="monitor-header-grid">
           <div class="monitor-status-large">
@@ -224,14 +225,22 @@
         </div>
         
         <div class="monitor-actions-grid">
-          <router-link :to="`/monitors/${monitor.id}`" class="btn btn-primary btn-sm">
-            <i class="fas fa-eye"></i>
+          <button
+            @click.stop="visitMonitor(monitor)"
+            class="btn btn-info btn-sm"
+            :disabled="!isVisitable(monitor)"
+            :title="getVisitTooltip(monitor)"
+          >
+            🌐 Visit
+          </button>
+          <router-link :to="`/monitors/${monitor.id}`" class="btn btn-primary btn-sm" @click.stop>
+            📊 View
           </router-link>
-          <router-link :to="`/monitors/${monitor.id}/edit`" class="btn btn-secondary btn-sm">
-            <i class="fas fa-edit"></i>
+          <router-link :to="`/monitors/${monitor.id}/edit`" class="btn btn-secondary btn-sm" @click.stop>
+            ✏️ Edit
           </router-link>
           <button
-            @click="deleteMonitor(monitor)"
+            @click.stop="deleteMonitor(monitor)"
             class="btn btn-danger btn-sm"
             :disabled="deleting === monitor.id"
           >
@@ -247,7 +256,9 @@
       <div
         v-for="monitor in filteredMonitors"
         :key="monitor.id"
-        class="monitor-card"
+        class="monitor-card clickable"
+        @click="navigateToDetails(monitor.id)"
+        title="Click to view monitor details"
       >
         <div class="monitor-header">
           <div class="monitor-info">
@@ -305,20 +316,24 @@
 
         <div class="monitor-actions">
           <button
-            @click="visitMonitor(monitor)"
+            @click.stop="visitMonitor(monitor)"
             class="btn btn-info btn-sm"
             :disabled="!isVisitable(monitor)"
             :title="getVisitTooltip(monitor)"
           >
             🌐 Visit
           </button>
-          <router-link :to="`/monitors/${monitor.id}`" class="btn btn-primary btn-sm">
-            View
+          <router-link :to="`/monitors/${monitor.id}`" class="btn btn-primary btn-sm" @click.stop>
+            📊 View
+          </router-link>
+          
+          <router-link :to="`/monitors/${monitor.id}/edit`" class="btn btn-secondary btn-sm" @click.stop>
+            ✏️ Edit
           </router-link>
           
           <button
             v-if="monitor.pause_until && new Date(monitor.pause_until) > new Date()"
-            @click="resumeMonitor(monitor)"
+            @click.stop="resumeMonitor(monitor)"
             class="btn btn-success btn-sm"
           >
             Resume
@@ -326,14 +341,14 @@
           
           <button
             v-else
-            @click="pauseMonitor(monitor)"
+            @click.stop="pauseMonitor(monitor)"
             class="btn btn-warning btn-sm"
           >
             Pause
           </button>
           
           <button
-            @click="deleteMonitor(monitor)"
+            @click.stop="deleteMonitor(monitor)"
             class="btn btn-danger btn-sm"
             :disabled="deleting === monitor.id"
           >
@@ -383,7 +398,9 @@
           <div
             v-for="monitor in groupData.monitors"
             :key="monitor.id"
-            class="monitor-card compact"
+            class="monitor-card compact clickable"
+            @click="navigateToDetails(monitor.id)"
+            title="Click to view monitor details"
           >
             <div class="monitor-header">
               <div class="monitor-info">
@@ -408,18 +425,18 @@
 
             <div class="monitor-actions compact">
               <button
-                @click="visitMonitor(monitor)"
+                @click.stop="visitMonitor(monitor)"
                 class="btn btn-info btn-sm"
                 :disabled="!isVisitable(monitor)"
                 :title="getVisitTooltip(monitor)"
               >
                 🌐 Visit
               </button>
-              <router-link :to="`/monitors/${monitor.id}`" class="btn btn-primary btn-sm">
-                View
+              <router-link :to="`/monitors/${monitor.id}`" class="btn btn-primary btn-sm" @click.stop>
+                📊 View
               </router-link>
-              <router-link :to="`/monitors/${monitor.id}/edit`" class="btn btn-secondary btn-sm">
-                Edit
+              <router-link :to="`/monitors/${monitor.id}/edit`" class="btn btn-secondary btn-sm" @click.stop>
+                ✏️ Edit
               </router-link>
             </div>
           </div>
@@ -486,8 +503,10 @@
 <script setup>
 import { ref, onMounted, onUnmounted, reactive, computed, watch } from 'vue'
 import { useMonitorStore } from '../stores/monitors'
+import { useRouter } from 'vue-router'
 
 const monitorStore = useMonitorStore()
+const router = useRouter()
 
 const filters = reactive({
   status: '',
@@ -544,59 +563,58 @@ const overallHealthClass = computed(() => {
   return 'health-critical'
 })
 
-// Computed property for client-side filtering (fallback)
+// Computed property for client-side filtering
 const filteredMonitors = computed(() => {
+  if (!monitorStore.monitors || monitorStore.monitors.length === 0) {
+    return []
+  }
+  
   let result = [...monitorStore.monitors] // Create a copy to avoid mutation
   
-  console.log('Applying filters:', filters)
-  console.log('Original monitors count:', result.length)
-  
-  // Apply client-side filters as fallback
+  // Apply status filter
   if (filters.status && filters.status !== '') {
     result = result.filter(monitor => {
       const status = monitor.last_status?.toLowerCase()
       const filterStatus = filters.status.toLowerCase()
-      console.log(`Monitor ${monitor.name}: status=${status}, filter=${filterStatus}`)
       return status === filterStatus
     })
-    console.log('After status filter:', result.length)
   }
   
+  // Apply type filter
   if (filters.type && filters.type !== '') {
     result = result.filter(monitor => {
       const type = monitor.type?.toLowerCase()
       const filterType = filters.type.toLowerCase() 
       return type === filterType
     })
-    console.log('After type filter:', result.length)
   }
   
+  // Apply enabled filter
   if (filters.enabled && filters.enabled !== '') {
     const isEnabled = filters.enabled === 'true'
     result = result.filter(monitor => monitor.enabled === isEnabled)
-    console.log('After enabled filter:', result.length)
   }
   
+  // Apply group filter
   if (filters.group && filters.group !== '') {
     if (filters.group === 'ungrouped') {
       result = result.filter(monitor => !monitor.group_name)
     } else {
       result = result.filter(monitor => monitor.group_name === filters.group)
     }
-    console.log('After group filter:', result.length)
   }
   
+  // Apply search filter
   if (filters.search && filters.search.trim() !== '') {
     const searchTerm = filters.search.toLowerCase()
-    result = result.filter(monitor => 
-      monitor.name?.toLowerCase().includes(searchTerm) ||
-      monitor.target?.toLowerCase().includes(searchTerm) ||
-      (monitor.group_name && monitor.group_name.toLowerCase().includes(searchTerm))
-    )
-    console.log('After search filter:', result.length)
+    result = result.filter(monitor => {
+      const nameMatch = monitor.name?.toLowerCase().includes(searchTerm)
+      const targetMatch = monitor.target?.toLowerCase().includes(searchTerm)
+      const groupMatch = monitor.group_name && monitor.group_name.toLowerCase().includes(searchTerm)
+      return nameMatch || targetMatch || groupMatch
+    })
   }
   
-  console.log('Final filtered result:', result.length)
   return result
 })
 
@@ -639,6 +657,10 @@ function formatLastCheck(timestamp) {
   return `${diffDays}d ago`
 }
 
+function navigateToDetails(monitorId) {
+  router.push(`/monitors/${monitorId}`)
+}
+
 function visitMonitor(monitor) {
   if (!isVisitable(monitor)) return
   
@@ -662,18 +684,18 @@ function getVisitTooltip(monitor) {
 }
 
 async function fetchData() {
-  console.log('fetchData called with filters:', filters)
-  console.log('Current view mode:', viewMode.value)
-  
-  // Always fetch monitors first to get all data
-  await fetchMonitors()
-  
-  // If in grouped view, also fetch grouped data
-  if (viewMode.value === 'grouped') {
-    await fetchGroupedMonitors()
+  try {
+    // Always fetch ALL monitors without any filters
+    // Filtering will be handled by the computed property
+    await monitorStore.fetchMonitors()
+    
+    // If in grouped view, also fetch grouped data
+    if (viewMode.value === 'grouped') {
+      await fetchGroupedMonitors()
+    }
+  } catch (error) {
+    console.error('Error in fetchData:', error)
   }
-  
-  console.log('fetchData completed. Total monitors:', monitorStore.monitors.length)
 }
 
 async function fetchGroups() {
@@ -851,19 +873,11 @@ function getGroupHealthClass(monitors) {
 }
 
 function clearFilters() {
-  console.log('Clearing all filters')
   filters.status = ''
   filters.type = ''
   filters.enabled = ''
   filters.group = ''
   filters.search = ''
-  fetchData()
-}
-
-function onStatusChange() {
-  console.log('Status changed to:', filters.status)
-  console.log('All monitors:', monitorStore.monitors.map(m => ({ name: m.name, status: m.last_status })))
-  fetchData()
 }
 
 // Lifecycle
@@ -873,19 +887,13 @@ onMounted(async () => {
   startAutoRefresh()
 })
 
-// Watch filters for debugging
+// Watch filters for reactivity
 watch(
-  () => filters.status,
-  (newStatus, oldStatus) => {
-    console.log('Status filter changed:', { old: oldStatus, new: newStatus })
-  }
-)
-
-watch(
-  () => filteredMonitors.value.length,
-  (newCount) => {
-    console.log('Filtered monitors count changed:', newCount)
-  }
+  () => [filters.status, filters.type, filters.enabled, filters.group, filters.search],
+  () => {
+    // Computed property automatically handles filtering
+  },
+  { deep: true }
 )
 
 onUnmounted(() => {
@@ -932,50 +940,64 @@ onUnmounted(() => {
 
 .form-container {
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  margin-bottom: 30px;
-  padding: 30px;
+  margin-bottom: 32px;
+  padding: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 /* Stats Cards */
 .stats-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
 .stat-card {
   background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 24px 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
   transition: all 0.3s ease;
   animation: fadeInUp 0.5s ease forwards;
   opacity: 0;
   transform: translateY(20px);
+  position: relative;
+  overflow: hidden;
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 .stat-icon {
-  font-size: 2.5em;
+  font-size: 2.2em;
   line-height: 1;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  flex-shrink: 0;
 }
 
 .stat-content h3 {
   margin: 0;
-  font-size: 2em;
-  font-weight: bold;
+  font-size: 1.75em;
+  font-weight: 700;
   color: #2c3e50;
+  line-height: 1.2;
 }
 
 .stat-content p {
@@ -1020,12 +1042,12 @@ onUnmounted(() => {
 /* Filters */
 .filters {
   background: #f8f9fa;
-  padding: 30px;
-  border: 1px solid #ecf0f1;
-  border-radius: 8px;
-  margin-bottom: 30px;
+  padding: 24px;
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  margin-bottom: 24px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 20px;
   align-items: end;
 }
@@ -1062,25 +1084,31 @@ onUnmounted(() => {
 /* Grid View */
 .monitors-grid-view {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-  margin-top: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
 }
 
 .monitor-card-grid {
   background: white;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease;
   animation: fadeInUp 0.5s ease forwards;
   opacity: 0;
   transform: translateY(20px);
 }
 
-.monitor-card-grid:hover {
+.monitor-card-grid.clickable {
+  cursor: pointer;
+}
+
+.monitor-card-grid.clickable:hover {
   transform: translateY(-5px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  border-color: #667eea;
 }
 
 .monitor-header-grid {
@@ -1167,24 +1195,51 @@ onUnmounted(() => {
 
 .monitor-actions-grid {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 /* List View */
 .monitors-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 16px;
 }
 
 .monitor-card {
   background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
   transition: all 0.3s ease;
-  border-bottom: 1px solid #ecf0f1;
+  margin-bottom: 16px;
+}
+
+.monitor-card.clickable {
+  cursor: pointer;
+}
+
+.monitor-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border-color: #667eea;
+}
+
+/* Monitor Actions */
+.monitor-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.monitor-actions.compact {
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
 }
 
 /* Grouped View */
@@ -1197,47 +1252,52 @@ onUnmounted(() => {
 }
 
 .group-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f3ff 100%);
+  color: #2c3e50;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e3e8f5;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 20px;
-  margin-bottom: 30px;
-  padding: 30px;
+  margin-bottom: 20px;
+  padding: 18px 24px;
+  position: relative;
+  overflow: hidden;
 }
 
 .group-title-section h2 {
-  margin: 0 0 8px 0;
-  font-size: 1.5em;
+  margin: 0 0 5px 0;
+  font-size: 1.3em;
   font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  color: #2c3e50;
 }
 
 .monitor-count {
-  background: rgba(255, 255, 255, 0.2);
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 0.8em;
+  background: rgba(44, 62, 80, 0.1);
+  color: #2c3e50;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 0.75em;
   font-weight: 500;
-  margin-left: 8px;
+  margin-left: 6px;
 }
 
 .group-description {
   margin: 0;
-  color: rgba(255, 255, 255, 0.9);
+  color: #6c757d;
   font-style: italic;
-  font-size: 0.95em;
+  font-size: 0.9em;
 }
 
 .group-stats-enhanced {
   display: flex;
-  gap: 25px;
+  gap: 20px;
   align-items: center;
 }
 
@@ -1247,50 +1307,70 @@ onUnmounted(() => {
 
 .stat-number {
   display: block;
-  font-size: 1.8em;
+  font-size: 1.5em;
   font-weight: bold;
   margin-bottom: 2px;
 }
 
 .stat-number.up {
-  color: #4caf50;
+  color: #28a745;
 }
 
 .stat-number.down {
-  color: #f44336;
+  color: #dc3545;
 }
 
 .health-badge {
-  background: rgba(255, 255, 255, 0.2);
-  padding: 4px 8px;
-  border-radius: 8px;
-  font-size: 1em;
+  background: rgba(44, 62, 80, 0.08);
+  color: #2c3e50;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  font-weight: 600;
 }
 
 .health-badge.health-excellent {
-  background: #4caf50;
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
 }
 
 .health-badge.health-good {
-  background: #ff9800;
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
 }
 
 .health-badge.health-warning {
-  background: #ff5722;
+  background: rgba(255, 87, 34, 0.1);
+  color: #ff5722;
 }
 
 .health-badge.health-critical {
-  background: #f44336;
+  background: rgba(244, 67, 54, 0.1);
+  color: #f44336;
 }
 
 .group-monitors {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
 }
 
 .monitor-card.compact {
-  padding: 15px;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+}
+
+.monitor-card.compact.clickable {
+  cursor: pointer;
+}
+
+.monitor-card.compact.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-color: #667eea;
 }
 
 /* Status Badges */

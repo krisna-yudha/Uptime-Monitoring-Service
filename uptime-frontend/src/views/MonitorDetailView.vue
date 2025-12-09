@@ -14,7 +14,7 @@
               :disabled="!isVisitable(monitor)"
               :title="getVisitTooltip(monitor)"
             >
-              import { UilSearch } from '@iconscout/vue-unicons' Visit
+               🔗 Visit
             </button>
           </div>
           <div class="monitor-meta">
@@ -132,7 +132,7 @@
               :key="period.value"
               @click="selectPeriod(period.value)"
               class="period-btn"
-              :class="{ active: selectedPeriod === period.value, loading: chartLoading }"
+              :class="{ active: selectedPeriod === period.value }"
               :disabled="chartLoading"
             >
               <span v-if="chartLoading && selectedPeriod === period.value" class="btn-spinner"></span>
@@ -267,7 +267,7 @@ const error = ref(null)
 const selectedPeriod = ref('24h')
 const currentPage = ref(1)
 const itemsPerPage = 5
-const statusHistory = ref([])
+const statusHistory = ref([]) // (masih ada, walau belum dipakai)
 const allStatusHistory = ref([])
 const totalItems = ref(0)
 const responseChart = ref(null)
@@ -275,6 +275,8 @@ const chartInstance = ref(null)
 const chartLoading = ref(false)
 const chartRefreshInterval = ref(null)
 const historyRefreshInterval = ref(null)
+const lastUpdateTime = ref(0)
+const isUpdating = ref(false)
 
 // Chart periods
 const chartPeriods = [
@@ -363,10 +365,11 @@ const statsData = computed(() => {
 })
 
 // Lifecycle
-onMounted(() => {
-  fetchMonitorData()
-  startChartAutoRefresh()
-  startHistoryAutoRefresh()
+onMounted(async () => {
+  console.log('📱 Component mounted, loading monitor data...')
+  await nextTick()
+  await fetchMonitorData()
+  // Auto-refresh akan di-start setelah monitor berhasil di-load
 })
 
 onUnmounted(() => {
@@ -375,9 +378,16 @@ onUnmounted(() => {
   stopHistoryAutoRefresh()
 })
 
-// Watch for route changes
+// Watchers
 watch(() => route.params.id, fetchMonitorData)
-watch(selectedPeriod, fetchChartData)
+
+watch(() => monitor.value, async (newVal) => {
+  if (newVal && !chartLoading.value && responseChart.value) {
+    console.log('🔄 Monitor data changed, refreshing chart...')
+    await nextTick()
+    await fetchChartData()
+  }
+}, { deep: false })
 
 // Methods
 async function fetchMonitorData() {
@@ -389,10 +399,20 @@ async function fetchMonitorData() {
     
     if (result.success) {
       monitor.value = result.data
+      
+      console.log('✅ Monitor loaded:', monitor.value.name)
+      console.log('⏱️ Monitor checks every:', monitor.value.interval_seconds, 'seconds')
+      
+      // Pastikan canvas siap
+      await nextTick()
+      
       await Promise.all([
         fetchStatusHistory(),
         fetchChartData()
       ])
+      
+      // Auto-refresh will be started automatically after chart is created in fetchChartData
+      console.log('✅ Monitor data and chart loaded successfully')
     } else {
       error.value = result.message
     }
@@ -406,127 +426,116 @@ async function fetchMonitorData() {
 
 async function fetchStatusHistory() {
   try {
-    // Generate 100 services for backend durability testing
-    const services = []
-    const statuses = ['up', 'up', 'up', 'up', 'down', 'validating'] // 67% up, 17% down, 16% validating
-    const errorMessages = [
-      'Connection timeout',
-      'DNS resolution failed', 
-      'Server not responding',
-      'Network unreachable',
-      'Service unavailable',
-      'SSL certificate expired',
-      'HTTP 500 Internal Error',
-      'HTTP 503 Service Unavailable',
-      'Connection refused',
-      'Host unreachable'
-    ]
+    console.log('🔍 Fetching status history for monitor:', route.params.id)
     
-    const serviceNames = [
-      'web-api', 'database', 'redis-cache', 'elasticsearch', 'nginx-proxy',
-      'auth-service', 'payment-gateway', 'file-storage', 'message-queue', 'monitoring',
-      'cdn-endpoint', 'load-balancer', 'email-service', 'backup-service', 'analytics'
-    ]
+    const response = await monitorStore.api.monitorChecks.getAll({
+      monitor_id: route.params.id,
+      per_page: 100,
+      sort: 'checked_at',
+      order: 'desc'
+    })
     
-    for (let i = 1; i <= 100; i++) {
-      const randomStatus = statuses[Math.floor(Math.random() * statuses.length)]
-      const timeOffset = i * 45000 + Math.floor(Math.random() * 20000) // Every ~45 seconds with variation
-      const serviceName = serviceNames[Math.floor(Math.random() * serviceNames.length)]
+    console.log('📦 API Response:', response.data)
+    
+    if (response.data.success) {
+      let checks = []
       
-      let service = {
-        id: i,
-        status: randomStatus,
-        checked_at: new Date(Date.now() - timeOffset).toISOString(),
-        response_time: null,
-        error_message: null,
-        service_name: `${serviceName}-${Math.floor(i/10) + 1}`
+      if (response.data.data.data) {
+        checks = response.data.data.data
+      } else if (Array.isArray(response.data.data)) {
+        checks = response.data.data
       }
       
-      if (randomStatus === 'up') {
-        service.response_time = 50 + Math.floor(Math.random() * 350) // 50-400ms
-      } else if (randomStatus === 'down') {
-        service.error_message = errorMessages[Math.floor(Math.random() * errorMessages.length)]
-      } else if (randomStatus === 'validating') {
-        service.response_time = 800 + Math.floor(Math.random() * 400) // Slow response 800-1200ms
-      }
+      console.log('📋 Status checks found:', checks.length)
       
-      services.push(service)
+      allStatusHistory.value = checks.map(check => ({
+        id: check.id,
+        status: check.status,
+        checked_at: check.checked_at,
+        response_time: check.latency_ms,
+        error_message: check.error_message
+      }))
+      
+      totalItems.value = allStatusHistory.value.length
+      currentPage.value = 1
+      
+      console.log(`✅ Loaded ${allStatusHistory.value.length} status checks from API`)
+      console.log('📊 First check:', allStatusHistory.value[0])
+      
+      // Start history auto-refresh
+      startHistoryAutoRefresh()
+    } else {
+      console.warn('❌ Failed to fetch monitor checks:', response.data.message)
+      allStatusHistory.value = []
+      totalItems.value = 0
     }
-    
-    // Sort by checked_at descending (newest first)
-    allStatusHistory.value = services.sort((a, b) => new Date(b.checked_at) - new Date(a.checked_at))
-    totalItems.value = allStatusHistory.value.length
-    currentPage.value = 1
-    
-    console.log(`🚀 Backend Durability Test: Generated ${allStatusHistory.value.length} services`)
-    console.log(`📊 Total pages: ${Math.ceil(totalItems.value / itemsPerPage)}`)
-    console.log(`⚡ Worker will process ${allStatusHistory.value.length} entries in realtime updates`)
   } catch (err) {
-    console.error('Error fetching status history:', err)
+    console.error('❌ Error fetching status history:', err)
+    console.error('Error details:', err.response?.data || err.message)
+    allStatusHistory.value = []
+    totalItems.value = 0
   }
 }
 
 async function updateHistoryRealtime() {
   if (!monitor.value || loading.value) return
   
-  // Generate new status entry with realistic data
-  const now = new Date()
-  const statuses = ['up', 'up', 'up', 'up', 'down'] // 80% up, 20% down
-  const randomStatus = statuses[Math.floor(Math.random() * statuses.length)]
-  
-  let newEntry
-  if (randomStatus === 'up') {
-    const responseTime = 120 + Math.floor(Math.random() * 100) // 120-220ms
-    newEntry = {
-      id: Date.now(),
-      status: 'up',
-      checked_at: now.toISOString(),
-      response_time: responseTime,
-      error_message: null
-    }
-  } else {
-    const errorMessages = [
-      'Connection timeout',
-      'DNS resolution failed',
-      'Server not responding',
-      'Network unreachable',
-      'Service unavailable'
-    ]
-    const randomError = errorMessages[Math.floor(Math.random() * errorMessages.length)]
+  try {
+    const response = await monitorStore.api.monitorChecks.getAll({
+      monitor_id: route.params.id,
+      per_page: 10,
+      sort: 'checked_at',
+      order: 'desc'
+    })
     
-    newEntry = {
-      id: Date.now(),
-      status: 'down',
-      checked_at: now.toISOString(),
-      response_time: null,
-      error_message: randomError
+    if (response.data.success) {
+      const latestChecks = response.data.data.data || response.data.data || []
+      
+      latestChecks.forEach(check => {
+        const exists = allStatusHistory.value.find(item => item.id === check.id)
+        if (!exists) {
+          allStatusHistory.value.unshift({
+            id: check.id,
+            status: check.status,
+            checked_at: check.checked_at,
+            response_time: check.latency_ms,
+            error_message: check.error_message
+          })
+        }
+      })
+      
+      totalItems.value = allStatusHistory.value.length
     }
-  }
-  
-  // Add new entry to the top of history
-  allStatusHistory.value.unshift(newEntry)
-  
-  // Update total items count
-  totalItems.value = allStatusHistory.value.length
-  
-  // If we're not on the first page, don't auto-navigate to show new entries
-  // Users can manually go to page 1 to see latest entries
-  
-  // Update monitor's last status and response time
-  if (monitor.value) {
-    monitor.value.last_status = newEntry.status
-    monitor.value.last_response_time = newEntry.response_time
-    monitor.value.last_checked_at = newEntry.checked_at
+  } catch (err) {
+    // silent error
   }
 }
 
 function startChartAutoRefresh() {
-  // Auto refresh chart every 10 seconds
+  stopChartAutoRefresh()
+  
+  if (!monitor.value) {
+    console.warn('⚠️ Cannot start auto-refresh - monitor not loaded')
+    return
+  }
+  
+  const refreshInterval = 1000 // Fixed 1 second auto-refresh (realtime)
+  
+  console.log(`🔄 Starting chart auto-refresh - Refreshing every ${refreshInterval/1000}s`)
+  
   chartRefreshInterval.value = setInterval(() => {
-    if (!chartLoading.value && responseChart.value) {
+    if (responseChart.value && monitor.value && !isUpdating.value) {
+      const timestamp = new Date().toLocaleTimeString()
+      console.log(`⏰ [${timestamp}] Triggering chart auto-refresh...`)
       updateChartRealtime()
+    } else {
+      console.log('⏭️ Skipping auto-refresh - conditions not met:', {
+        hasCanvas: !!responseChart.value,
+        hasMonitor: !!monitor.value,
+        notUpdating: !isUpdating.value
+      })
     }
-  }, 10000)
+  }, refreshInterval)
 }
 
 function stopChartAutoRefresh() {
@@ -537,12 +546,31 @@ function stopChartAutoRefresh() {
 }
 
 function startHistoryAutoRefresh() {
-  // Auto refresh status history every 15 seconds
+  stopHistoryAutoRefresh()
+  
+  let refreshInterval = 2000 // Faster for realtime (2 seconds)
+  
+  if (monitor.value?.interval_seconds) {
+    const monitorInterval = monitor.value.interval_seconds * 1000
+    
+    if (monitorInterval <= 2000) {
+      refreshInterval = 1000 // 1 second for very fast monitors
+    } else if (monitorInterval <= 5000) {
+      refreshInterval = 2000 // 2 seconds
+    } else if (monitorInterval <= 15000) {
+      refreshInterval = 5000 // 5 seconds
+    } else {
+      refreshInterval = 10000 // 10 seconds for slower monitors
+    }
+  }
+  
+  console.log(`🔄 Starting history auto-refresh - Refreshing every ${refreshInterval/1000}s`)
+  
   historyRefreshInterval.value = setInterval(() => {
-    if (!loading.value && monitor.value) {
+    if (!loading.value && monitor.value && !chartLoading.value) {
       updateHistoryRealtime()
     }
-  }, 15000)
+  }, refreshInterval)
 }
 
 function stopHistoryAutoRefresh() {
@@ -555,56 +583,81 @@ function stopHistoryAutoRefresh() {
 async function updateChartRealtime() {
   if (!responseChart.value || chartLoading.value) return
   
-  // Generate new data point
+  // Debounce (500ms for realtime updates)
   const now = Date.now()
-  const baseValue = 150 + Math.random() * 100 // 150-250ms base
-  const variation = (Math.sin(now / 10000) * 30) + (Math.random() * 40 - 20)
-  const newValue = Math.max(50, baseValue + variation)
-  
-  const newDataPoint = {
-    time: now,
-    value: Math.round(newValue)
+  if (now - lastUpdateTime.value < 500) {
+    console.log('⏭️ Skipping update - too soon (debounce)')
+    return
   }
   
-  // Update chart with new data point
-  await updateChartWithNewData(newDataPoint)
-}
-
-async function updateChartWithNewData(newDataPoint) {
-  if (!responseChart.value) return
-  
-  // Get existing data and add new point
-  const existingData = generateChartData(selectedPeriod.value)
-  existingData.push(newDataPoint)
-  
-  // Remove oldest point to maintain count
-  const maxPoints = getMaxPointsForPeriod(selectedPeriod.value)
-  if (existingData.length > maxPoints) {
-    existingData.shift()
+  if (isUpdating.value) {
+    console.log('⏭️ Update already in progress')
+    return
   }
   
-  // Redraw chart with updated data
-  drawChart(existingData)
-}
-
-function getMaxPointsForPeriod(period) {
-  switch (period) {
-    case '1h': return 12
-    case '24h': return 12
-    case '7d': return 14
-    case '30d': return 30
-    default: return 12
+  isUpdating.value = true
+  
+  try {
+    // Fetch latest data
+    const response = await monitorStore.api.monitorChecks.getAll({
+      monitor_id: route.params.id,
+      per_page: getPeriodLimit(selectedPeriod.value),
+      sort: 'checked_at',
+      order: 'desc'
+    })
+    
+    if (response.data.success) {
+      let checks = response.data.data.data || response.data.data || []
+      
+      if (checks.length === 0) {
+        console.log('⚠️ No data for realtime update')
+        isUpdating.value = false
+        return
+      }
+      
+      // Convert to chart data points
+      const dataPoints = checks.reverse().map(check => ({
+        time: new Date(check.checked_at).getTime(),
+        value: check.latency_ms || 0
+      }))
+      
+      // Redraw chart with new data
+      drawChart(dataPoints)
+      
+      lastUpdateTime.value = now
+      console.log('✅ Chart updated successfully at', new Date().toLocaleTimeString())
+    }
+  } catch (err) {
+    console.error('❌ Auto-refresh failed:', err)
+  } finally {
+    isUpdating.value = false
   }
 }
 
 async function fetchChartData() {
+  if (!monitor.value) {
+    console.warn('⚠️ Monitor not loaded yet, skipping chart fetch')
+    return
+  }
+  
   chartLoading.value = true
   await nextTick()
   
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  // Stop auto-refresh during manual fetch
+  const wasAutoRefreshRunning = !!chartRefreshInterval.value
+  if (wasAutoRefreshRunning) {
+    stopChartAutoRefresh()
+  }
+  
+  // Wait for canvas to be ready
+  let retries = 0
+  while (!responseChart.value && retries < 10) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+    retries++
+  }
   
   if (!responseChart.value) {
+    console.warn('⚠️ Canvas element not ready after retries')
     chartLoading.value = false
     return
   }
@@ -612,17 +665,64 @@ async function fetchChartData() {
   // Destroy existing chart
   destroyChart()
   
-  // Generate sample data based on selected period
-  const dataPoints = generateChartData(selectedPeriod.value)
+  console.log('📊 Fetching chart data for period:', selectedPeriod.value)
   
-  // Draw chart
-  drawChart(dataPoints)
-  
-  chartLoading.value = false
+  try {
+    const response = await monitorStore.api.monitorChecks.getAll({
+      monitor_id: route.params.id,
+      per_page: getPeriodLimit(selectedPeriod.value),
+      sort: 'checked_at',
+      order: 'desc'
+    })
+    
+    console.log('📦 Chart API Response:', response.data)
+    
+    if (response.data.success) {
+      let checks = response.data.data.data || response.data.data || []
+      
+      console.log('✅ Chart data loaded:', checks.length, 'data points')
+      
+      if (checks.length === 0) {
+        console.warn('⚠️ No data available for chart')
+      } else {
+        // Convert to chart data points
+        const dataPoints = checks.reverse().map(check => ({
+          time: new Date(check.checked_at).getTime(),
+          value: check.latency_ms || 0
+        }))
+        
+        console.log('📈 Drawing chart with', dataPoints.length, 'points')
+        
+        // Draw chart
+        drawChart(dataPoints)
+      }
+    }
+  } catch (err) {
+    console.error('❌ Error fetching chart data:', err)
+  } finally {
+    chartLoading.value = false
+    
+    // Restart auto-refresh after chart is created
+    await new Promise(resolve => setTimeout(resolve, 500))
+    if (monitor.value) {
+      startChartAutoRefresh()
+      console.log('✅ Auto-refresh restarted after chart creation')
+    }
+  }
 }
 
 function drawChart(dataPoints) {
-  if (!responseChart.value || !dataPoints || dataPoints.length === 0) return
+  if (!responseChart.value) {
+    console.warn('⚠️ Canvas not available for drawing')
+    return
+  }
+  
+  if (!dataPoints || dataPoints.length === 0) {
+    console.warn('⚠️ No data points to draw')
+    return
+  }
+  
+  console.log('🎨 Drawing chart with', dataPoints.length, 'data points')
   
   // Create chart using Canvas API
   const canvas = responseChart.value
@@ -746,61 +846,19 @@ function drawChart(dataPoints) {
       }
     })
   }
-}
-
-async function selectPeriod(period) {
-  selectedPeriod.value = period
   
-  // Restart auto refresh with new period
-  stopChartAutoRefresh()
-  await fetchChartData()
-  startChartAutoRefresh()
+  chartInstance.value = true // Mark as initialized
+  console.log('✅ Chart drawn successfully')
 }
 
-async function refreshChart() {
-  await fetchChartData()
-}
-
-function generateChartData(period) {
-  const now = Date.now()
-  const dataPoints = []
-  let interval, count
-  
+function getPeriodLimit(period) {
   switch (period) {
-    case '1h':
-      interval = 5 * 60 * 1000 // 5 minutes
-      count = 12
-      break
-    case '24h':
-      interval = 2 * 60 * 60 * 1000 // 2 hours
-      count = 12
-      break
-    case '7d':
-      interval = 12 * 60 * 60 * 1000 // 12 hours
-      count = 14
-      break
-    case '30d':
-      interval = 24 * 60 * 60 * 1000 // 1 day
-      count = 30
-      break
-    default:
-      interval = 2 * 60 * 60 * 1000
-      count = 12
+    case '1h': return 60
+    case '24h': return 100
+    case '7d': return 168
+    case '30d': return 720
+    default: return 100
   }
-  
-  for (let i = count - 1; i >= 0; i--) {
-    const time = now - (interval * i)
-    const baseValue = 150 + Math.random() * 100 // 150-250ms base
-    const variation = (Math.sin(i / 3) * 30) + (Math.random() * 40 - 20)
-    const value = Math.max(50, baseValue + variation)
-    
-    dataPoints.push({
-      time,
-      value: Math.round(value)
-    })
-  }
-  
-  return dataPoints
 }
 
 function formatChartTime(timestamp, period) {
@@ -838,9 +896,42 @@ function formatChartTime(timestamp, period) {
 
 function destroyChart() {
   if (chartInstance.value) {
-    chartInstance.value.destroy()
     chartInstance.value = null
   }
+}
+
+async function selectPeriod(period) {
+  if (selectedPeriod.value === period) return
+  
+  console.log('🔄 Switching period from', selectedPeriod.value, 'to', period)
+  
+  // Stop auto-refresh and reset update state
+  stopChartAutoRefresh()
+  isUpdating.value = false
+  lastUpdateTime.value = 0
+  
+  // Update period
+  selectedPeriod.value = period
+  
+  // Wait for state to settle
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 100))
+  
+  // Fetch new data
+  await fetchChartData()
+  
+  // Wait before restarting auto-refresh
+  await new Promise(resolve => setTimeout(resolve, 500))
+  
+  // Restart auto-refresh
+  if (monitor.value && chartInstance.value) {
+    startChartAutoRefresh()
+    console.log('✅ Period switched successfully to', period)
+  }
+}
+
+async function refreshChart() {
+  await fetchChartData()
 }
 
 async function toggleMonitor() {
@@ -852,8 +943,7 @@ async function toggleMonitor() {
     } else {
       await monitorStore.updateMonitor(monitor.value.id, { enabled: true })
     }
-    
-    // Refresh monitor data
+
     await fetchMonitorData()
   } catch (err) {
     console.error('Error toggling monitor:', err)
@@ -937,7 +1027,7 @@ function formatDateTime(dateString) {
 <style scoped>
 .monitor-detail {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f3ff 100%);
   position: relative;
   padding: 0;
   margin: 0;
@@ -951,9 +1041,9 @@ function formatDateTime(dateString) {
   right: 0;
   bottom: 0;
   background: 
-    radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.1) 0%, transparent 50%);
+    radial-gradient(circle at 20% 80%, rgba(102, 126, 234, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(118, 75, 162, 0.06) 0%, transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(0, 184, 148, 0.04) 0%, transparent 50%);
   pointer-events: none;
 }
 
@@ -983,7 +1073,7 @@ function formatDateTime(dateString) {
   margin: 0 0 10px 0;
   font-size: 2rem;
   font-weight: 600;
-  color: #ffffff;
+  color: #080808;
 }
 
 .monitor-url {
@@ -994,7 +1084,7 @@ function formatDateTime(dateString) {
 }
 
 .url-text {
-  color: #00b894;
+  color: #2c3fce;
   font-family: monospace;
   font-size: 1.1rem;
   word-break: break-all;

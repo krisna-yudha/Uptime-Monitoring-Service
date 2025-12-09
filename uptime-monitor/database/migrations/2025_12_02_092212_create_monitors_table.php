@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('type', 50); // http/tcp/ping/keyword/push
             $table->text('target'); // URL/Host/IP/Port target
             $table->json('config')->nullable(); // Konfigurasi (header, body, expected status, dsb)
-            $table->integer('interval_seconds')->default(10); // Jarak pengecekan (10 detik)
+            $table->integer('interval_seconds')->default(1); // Jarak pengecekan realtime (1 detik)
             $table->integer('timeout_ms')->default(5000); // Timeout Req
             $table->integer('retries')->default(3); // Jumlah retry sebelum dianggap down
             $table->boolean('enabled')->default(true); // Monitor Aktif/tidak

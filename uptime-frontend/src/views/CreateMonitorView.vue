@@ -76,37 +76,79 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label for="group_name" class="form-label">Group (Optional)</label>
-              <input
-                id="group_name"
-                v-model="form.group_name"
-                type="text"
-                class="form-control"
-                placeholder="e.g. Web Services"
-                list="existing-groups"
-              >
-              <datalist id="existing-groups">
-                <option v-for="group in existingGroups" :key="group" :value="group">
-                  {{ group }}
-                </option>
-              </datalist>
+              <label for="group_name" class="form-label">
+                Group <span class="optional">(Optional)</span>
+                <span class="group-count" v-if="selectedGroupInfo">{{ selectedGroupInfo.monitorsCount }} monitors</span>
+              </label>
+              <div class="group-input-container">
+                <select
+                  id="group_selector"
+                  v-model="selectedGroupType"
+                  class="form-control group-selector"
+                  @change="onGroupTypeChange(selectedGroupType)"
+                >
+                  <option value="none">No Group</option>
+                  <option value="existing" :disabled="existingGroups.length === 0">Select Existing Group</option>
+                  <option value="new">Create New Group</option>
+                </select>
+                
+                <!-- Existing Group Selector -->
+                <select
+                  v-if="selectedGroupType === 'existing'"
+                  v-model="form.group_name"
+                  class="form-control"
+                  @change="onExistingGroupSelect"
+                >
+                  <option value="">Choose a group...</option>
+                  <option v-for="group in groupsWithInfo" :key="group.name" :value="group.name">
+                    📁 {{ group.name }} ({{ group.monitorsCount }} monitors)
+                  </option>
+                </select>
+                
+                <!-- New Group Input -->
+                <input
+                  v-if="selectedGroupType === 'new'"
+                  id="new_group_name"
+                  v-model="form.group_name"
+                  type="text"
+                  class="form-control"
+                  placeholder="e.g. Web Services, API Endpoints"
+                  @input="validateGroupName"
+                >
+                
+                <!-- Group Info Display -->
+                <div v-if="selectedGroupInfo && selectedGroupType === 'existing'" class="group-info">
+                  <small class="group-description">
+                    📝 {{ selectedGroupInfo.description || 'No description' }}
+                  </small>
+                  <small class="group-stats">
+                    🟢 {{ selectedGroupInfo.upCount }} up • 
+                    🔴 {{ selectedGroupInfo.downCount }} down •
+                    ⏱️ Avg: {{ selectedGroupInfo.avgResponse }}ms
+                  </small>
+                </div>
+              </div>
               <small class="form-text">
-                Group your monitors for better organization. Type a new name to create a group.
+                <span v-if="selectedGroupType === 'none'">Monitor will not be grouped</span>
+                <span v-else-if="selectedGroupType === 'existing'">Select from existing groups for better organization</span>
+                <span v-else-if="selectedGroupType === 'new'">Create a new group to organize similar monitors</span>
               </small>
             </div>
 
-            <div class="form-group">
-              <label for="group_description" class="form-label">Group Description</label>
+            <div class="form-group" v-if="selectedGroupType === 'new'">
+              <label for="group_description" class="form-label">
+                Group Description
+                <span class="optional">(Optional)</span>
+              </label>
               <input
                 id="group_description"
                 v-model="form.group_description"
                 type="text"
                 class="form-control"
                 placeholder="e.g. Main website and API endpoints"
-                :disabled="!form.group_name"
               >
               <small class="form-text">
-                Optional description for the group (only if group is specified)
+                Brief description to help others understand this group's purpose
               </small>
             </div>
           </div>
@@ -133,15 +175,17 @@
           
           <div class="form-row">
             <div class="form-group">
-              <label for="interval" class="form-label">Check Interval (seconds)</label>
+              <label for="interval" class="form-label">Check Interval (seconds) *</label>
               <input
                 id="interval"
                 v-model.number="form.interval_seconds"
                 type="number"
                 class="form-control"
-                min="10"
+                min="1"
                 max="3600"
+                required
               >
+              <small class="form-help">Minimum 1 second for realtime monitoring</small>
             </div>
             
             <div class="form-group">
@@ -241,6 +285,67 @@
           </div>
         </div>
 
+        <!-- Notification Channels -->
+        <div class="form-section">
+          <h3>🔔 Notification Channels</h3>
+          <p class="form-text">Select channels to receive alerts when this monitor goes down</p>
+          
+          <div v-if="loadingChannels" class="loading-state">
+            <span>Loading notification channels...</span>
+          </div>
+          
+          <div v-else-if="availableChannels.length === 0" class="no-channels-state">
+            <span>📭 No notification channels configured yet.</span>
+            <router-link to="/notifications" class="btn btn-sm btn-primary">
+              Create Notification Channel
+            </router-link>
+          </div>
+          
+          <div v-else class="channels-selection">
+            <div 
+              v-for="channel in availableChannels" 
+              :key="channel.id"
+              class="channel-option"
+            >
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  :value="channel.id"
+                  v-model="form.notification_channels"
+                  class="form-checkbox"
+                >
+                <div class="channel-info">
+                  <div class="channel-header">
+                    <span class="channel-name">{{ channel.name }}</span>
+                    <span class="channel-badge" :class="`badge-${channel.type}`">
+                      {{ channel.type.toUpperCase() }}
+                    </span>
+                  </div>
+                  <div class="channel-details">
+                    <span v-if="channel.type === 'telegram'">
+                      📱 Telegram: {{ maskChatId(channel.config?.chat_id) }}
+                    </span>
+                    <span v-else-if="channel.type === 'discord'">
+                      💬 Discord Webhook
+                    </span>
+                    <span v-else-if="channel.type === 'slack'">
+                      💼 Slack: {{ channel.config?.channel || 'Default channel' }}
+                    </span>
+                    <span v-else-if="channel.type === 'webhook'">
+                      🔗 Webhook: {{ channel.config?.method || 'POST' }}
+                    </span>
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+          
+          <small class="form-text">
+            Selected {{ form.notification_channels.length }} channel(s). 
+            Alerts will be sent after {{ form.notify_after_retries }} failed check(s).
+          </small>
+        </div>
+
         <!-- Enable/Disable -->
         <div class="form-section">
           <div class="form-group">
@@ -278,6 +383,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useMonitorStore } from '../stores/monitors'
 import { useRouter } from 'vue-router'
+import api from '../services/api'
 
 const monitorStore = useMonitorStore()
 const router = useRouter()
@@ -286,6 +392,12 @@ const loading = ref(false)
 const error = ref(null)
 const tagsInput = ref('')
 const existingGroups = ref([])
+const groupsWithInfo = ref([])
+const selectedGroupType = ref('none')
+const selectedGroupInfo = ref(null)
+const loadingGroups = ref(false)
+const loadingChannels = ref(false)
+const availableChannels = ref([])
 
 const form = reactive({
   name: '',
@@ -293,10 +405,11 @@ const form = reactive({
   target: '',
   group_name: '',
   group_description: '',
-  interval_seconds: 10,
+  interval_seconds: 1,
   timeout_ms: 5000,
   retries: 3,
   notify_after_retries: 2,
+  notification_channels: [],
   enabled: true
 })
 
@@ -307,16 +420,67 @@ const config = reactive({
 })
 
 onMounted(async () => {
-  // Load existing groups for autocomplete
+  await loadExistingGroups()
+  await loadNotificationChannels()
+})
+
+// Load notification channels
+async function loadNotificationChannels() {
+  loadingChannels.value = true
+  try {
+    const response = await api.notificationChannels.getAll()
+    if (response.data.success) {
+      availableChannels.value = response.data.data.data || response.data.data || []
+    }
+  } catch (err) {
+    console.error('Failed to load notification channels:', err)
+  } finally {
+    loadingChannels.value = false
+  }
+}
+
+function maskChatId(chatId) {
+  if (!chatId) return ''
+  const str = String(chatId)
+  if (str.length <= 4) return str
+  return str.substring(0, 3) + '***' + str.substring(str.length - 2)
+}
+
+// Group management functions
+async function loadExistingGroups() {
+  loadingGroups.value = true
   try {
     const groupsResponse = await monitorStore.getGroups()
     if (groupsResponse.success) {
       existingGroups.value = groupsResponse.data.map(group => group.group_name).filter(Boolean)
+      
+      // Get group statistics
+      const monitorsResponse = await monitorStore.fetchMonitors()
+      if (monitorsResponse) {
+        groupsWithInfo.value = await Promise.all(
+          existingGroups.value.map(async (groupName) => {
+            const groupMonitors = monitorStore.monitors.filter(m => m.group_name === groupName)
+            return {
+              name: groupName,
+              monitorsCount: groupMonitors.length,
+              upCount: groupMonitors.filter(m => m.last_status === 'up').length,
+              downCount: groupMonitors.filter(m => m.last_status === 'down').length,
+              pendingCount: groupMonitors.filter(m => !m.last_status || m.last_status === 'pending').length,
+              avgResponse: groupMonitors.length > 0 
+                ? Math.round(groupMonitors.reduce((sum, m) => sum + (m.last_response_time || 0), 0) / groupMonitors.length)
+                : 0,
+              description: groupMonitors[0]?.group_description || `Group with ${groupMonitors.length} monitors`
+            }
+          })
+        )
+      }
     }
   } catch (err) {
     console.error('Failed to load existing groups:', err)
+  } finally {
+    loadingGroups.value = false
   }
-})
+}
 
 function onTypeChange() {
   // Reset target when type changes
@@ -330,6 +494,43 @@ function onTypeChange() {
       config[key] = key === 'expected_status_code' ? 200 : 0
     }
   })
+}
+
+function onGroupTypeChange(type) {
+  selectedGroupType.value = type || selectedGroupType.value
+  selectedGroupInfo.value = null
+  
+  // Clear form fields based on selection
+  if (selectedGroupType.value === 'none') {
+    form.group_name = ''
+    form.group_description = ''
+  } else if (selectedGroupType.value === 'new') {
+    form.group_name = ''
+    form.group_description = ''
+  }
+}
+
+function onExistingGroupSelect() {
+  if (form.group_name) {
+    selectedGroupInfo.value = groupsWithInfo.value.find(g => g.name === form.group_name)
+    form.group_description = selectedGroupInfo.value?.description || ''
+  } else {
+    selectedGroupInfo.value = null
+  }
+}
+
+function validateGroupName() {
+  // Check if group name already exists
+  const exists = existingGroups.value.includes(form.group_name)
+  if (exists && selectedGroupType.value === 'new') {
+    error.value = `Group "${form.group_name}" already exists. Use "Select Existing Group" instead.`
+    return false
+  } else {
+    if (error.value && error.value.includes('already exists')) {
+      error.value = null
+    }
+    return true
+  }
 }
 
 function getTargetPlaceholder() {
@@ -371,8 +572,27 @@ async function handleSubmit() {
   error.value = null
 
   try {
+    // Validate interval_seconds
+    if (form.interval_seconds < 1) {
+      error.value = 'Check interval must be at least 1 second'
+      loading.value = false
+      return
+    }
+
+    // Validate group name if creating new group
+    if (!validateGroupName()) {
+      loading.value = false
+      return
+    }
+
     // Prepare monitor data
     const monitorData = { ...form }
+    
+    // Clear group fields if "none" is selected
+    if (selectedGroupType.value === 'none') {
+      monitorData.group_name = ''
+      monitorData.group_description = ''
+    }
     
     // Add config if applicable
     const configData = {}
@@ -408,7 +628,8 @@ async function handleSubmit() {
       error.value = result.message || 'Failed to create monitor'
     }
   } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to create monitor'
+    console.error('Create monitor error:', err)
+    error.value = err.response?.data?.message || err.message || 'Failed to create monitor'
   } finally {
     loading.value = false
   }
@@ -471,6 +692,14 @@ async function handleSubmit() {
   display: block;
 }
 
+.form-help {
+  color: #6c757d;
+  font-size: 0.75em;
+  margin-top: 5px;
+  display: block;
+  font-style: italic;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -493,6 +722,212 @@ async function handleSubmit() {
   margin-top: 30px;
 }
 
+/* Group Selector Styles */
+.group-selector {
+  margin-bottom: 20px;
+}
+
+.group-type-options {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.group-type-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  border: 2px solid #e1e8ed;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  background: white;
+}
+
+.group-type-option:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.group-type-option.active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.group-type-option input[type="radio"] {
+  margin: 0;
+  width: auto;
+}
+
+.existing-group-selector {
+  margin-bottom: 20px;
+}
+
+.existing-group-options {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  background: white;
+}
+
+.existing-group-option {
+  padding: 12px 15px;
+  border-bottom: 1px solid #f1f3f4;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.existing-group-option:last-child {
+  border-bottom: none;
+}
+
+.existing-group-option:hover {
+  background: #f8f9ff;
+}
+
+.existing-group-option.selected {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.group-option-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.group-option-stats {
+  font-size: 0.85em;
+  color: #6c757d;
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.existing-group-option.selected .group-option-stats {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.group-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-stat-icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.stat-total {
+  background: #3498db;
+}
+
+.stat-up {
+  background: #27ae60;
+}
+
+.stat-down {
+  background: #e74c3c;
+}
+
+.stat-pending {
+  background: #f39c12;
+}
+
+.group-info-panel {
+  background: linear-gradient(135deg, #f8f9ff 0%, #e8f0fe 100%);
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  padding: 15px;
+  margin-top: 15px;
+}
+
+.group-info-title {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-info-title::before {
+  content: "📊";
+  font-size: 16px;
+}
+
+.group-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.group-stat-item {
+  text-align: center;
+  padding: 8px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e1e8ed;
+}
+
+.group-stat-value {
+  font-size: 1.2em;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.group-stat-label {
+  font-size: 0.75em;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.group-description {
+  color: #5a6c7d;
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.loading-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #6c757d;
+  font-size: 0.9em;
+}
+
+.loading-spinner::before {
+  content: "⏳";
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.no-groups-message {
+  text-align: center;
+  padding: 20px;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.no-groups-message::before {
+  content: "📝";
+  display: block;
+  font-size: 2em;
+  margin-bottom: 10px;
+}
+
 @media (max-width: 768px) {
   .form-row {
     grid-template-columns: 1fr;
@@ -501,5 +936,108 @@ async function handleSubmit() {
   .form-actions {
     flex-direction: column-reverse;
   }
+  
+  .group-type-options {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .group-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Notification Channels Styling */
+.channels-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.channel-option {
+  border: 2px solid #e1e8ed;
+  border-radius: 8px;
+  padding: 15px;
+  background: white;
+  transition: all 0.2s ease;
+}
+
+.channel-option:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.channel-option input[type="checkbox"]:checked + .channel-info {
+  color: #667eea;
+}
+
+.channel-info {
+  margin-left: 8px;
+  flex: 1;
+}
+
+.channel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.channel-name {
+  font-size: 1em;
+  color: #2c3e50;
+}
+
+.channel-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7em;
+  font-weight: bold;
+}
+
+.badge-telegram {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.badge-discord {
+  background: #ede7f6;
+  color: #5e35b1;
+}
+
+.badge-slack {
+  background: #e8f5e8;
+  color: #388e3c;
+}
+
+.badge-webhook {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.channel-details {
+  font-size: 0.85em;
+  color: #7f8c8d;
+}
+
+.loading-state,
+.no-channels-state {
+  text-align: center;
+  padding: 30px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  color: #7f8c8d;
+}
+
+.no-channels-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+.no-channels-state .btn {
+  margin-top: 10px;
 }
 </style>

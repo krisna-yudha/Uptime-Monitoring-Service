@@ -199,16 +199,6 @@
           </div>
         </div>
 
-        <div class="form-group">
-          <label>
-            <input
-              type="checkbox"
-              v-model="form.is_enabled"
-            />
-            Enable this channel
-          </label>
-        </div>
-
         <div class="form-actions">
           <button
             type="submit"
@@ -255,42 +245,35 @@
         v-for="channel in channels"
         :key="channel.id"
         class="channel-card"
-        :class="{ 'channel-disabled': !channel.is_enabled }"
       >
         <div class="channel-header">
           <div class="channel-type-badge" :class="`type-${channel.type}`">
             {{ channel.type.toUpperCase() }}
-          </div>
-          <div class="channel-status">
-            <span 
-              class="status-indicator"
-              :class="{ 'status-enabled': channel.is_enabled }"
-            ></span>
           </div>
         </div>
         
         <h3 class="channel-name">{{ channel.name }}</h3>
         
         <div class="channel-details">
-          <div v-if="channel.type === 'telegram'">
-            <strong>Bot Token:</strong> {{ maskToken(channel.telegram_bot_token) }}<br>
-            <strong>Chat ID:</strong> {{ channel.telegram_chat_id }}
+          <div v-if="channel.type === 'telegram' && channel.config">
+            <strong>Bot Token:</strong> {{ maskToken(channel.config.bot_token) }}<br>
+            <strong>Chat ID:</strong> {{ channel.config.chat_id }}
           </div>
           
-          <div v-else-if="channel.type === 'discord'">
-            <strong>Webhook:</strong> {{ maskUrl(channel.discord_webhook_url) }}
+          <div v-else-if="channel.type === 'discord' && channel.config">
+            <strong>Webhook:</strong> {{ maskUrl(channel.config.webhook_url) }}
           </div>
           
-          <div v-else-if="channel.type === 'slack'">
-            <strong>Webhook:</strong> {{ maskUrl(channel.slack_webhook_url) }}<br>
-            <span v-if="channel.slack_channel">
-              <strong>Channel:</strong> {{ channel.slack_channel }}
+          <div v-else-if="channel.type === 'slack' && channel.config">
+            <strong>Webhook:</strong> {{ maskUrl(channel.config.webhook_url) }}<br>
+            <span v-if="channel.config.channel">
+              <strong>Channel:</strong> {{ channel.config.channel }}
             </span>
           </div>
           
-          <div v-else-if="channel.type === 'webhook'">
-            <strong>URL:</strong> {{ maskUrl(channel.webhook_url) }}<br>
-            <strong>Method:</strong> {{ channel.webhook_method || 'POST' }}
+          <div v-else-if="channel.type === 'webhook' && channel.config">
+            <strong>URL:</strong> {{ maskUrl(channel.config.webhook_url) }}<br>
+            <strong>Method:</strong> {{ channel.config.method || 'POST' }}
           </div>
         </div>
         
@@ -324,7 +307,6 @@ const testing = ref(false)
 const form = ref({
   name: '',
   type: 'telegram',
-  is_enabled: true,
   
   // Telegram
   telegram_bot_token: '',
@@ -368,7 +350,7 @@ function onTypeChange() {
   // Reset form fields when type changes
   const type = form.value.type
   Object.keys(form.value).forEach(key => {
-    if (key !== 'name' && key !== 'type' && key !== 'is_enabled') {
+    if (key !== 'name' && key !== 'type') {
       form.value[key] = ''
     }
   })
@@ -382,24 +364,39 @@ function editChannel(channel) {
   editingChannel.value = channel
   showCreateForm.value = false
   
-  // Populate form with channel data
-  Object.keys(form.value).forEach(key => {
-    if (channel[key] !== undefined) {
-      form.value[key] = channel[key]
+  // Reset form first
+  resetForm()
+  
+  // Set basic fields
+  form.value.name = channel.name
+  form.value.type = channel.type
+  
+  // Parse config object based on channel type
+  if (channel.config) {
+    if (channel.type === 'telegram') {
+      form.value.telegram_bot_token = channel.config.bot_token || ''
+      form.value.telegram_chat_id = channel.config.chat_id || ''
+    } else if (channel.type === 'discord') {
+      form.value.discord_webhook_url = channel.config.webhook_url || ''
+    } else if (channel.type === 'slack') {
+      form.value.slack_webhook_url = channel.config.webhook_url || ''
+      form.value.slack_channel = channel.config.channel || ''
+    } else if (channel.type === 'webhook') {
+      form.value.webhook_url = channel.config.webhook_url || ''
+      form.value.webhook_method = channel.config.method || 'POST'
+      
+      if (channel.config.headers) {
+        form.value.webhook_headers = typeof channel.config.headers === 'string'
+          ? channel.config.headers
+          : JSON.stringify(channel.config.headers, null, 2)
+      }
+      
+      if (channel.config.payload) {
+        form.value.webhook_payload = typeof channel.config.payload === 'string'
+          ? channel.config.payload
+          : JSON.stringify(channel.config.payload, null, 2)
+      }
     }
-  })
-  
-  // Handle JSON fields
-  if (channel.webhook_headers) {
-    form.value.webhook_headers = typeof channel.webhook_headers === 'string'
-      ? channel.webhook_headers
-      : JSON.stringify(channel.webhook_headers, null, 2)
-  }
-  
-  if (channel.webhook_payload) {
-    form.value.webhook_payload = typeof channel.webhook_payload === 'string'
-      ? channel.webhook_payload
-      : JSON.stringify(channel.webhook_payload, null, 2)
   }
 }
 
@@ -413,7 +410,6 @@ function resetForm() {
   form.value = {
     name: '',
     type: 'telegram',
-    is_enabled: true,
     telegram_bot_token: '',
     telegram_chat_id: '',
     discord_webhook_url: '',
@@ -430,27 +426,55 @@ async function submitForm() {
   submitting.value = true
   
   try {
-    const formData = { ...form.value }
+    // Prepare config object based on channel type
+    let config = {}
     
-    // Parse JSON fields
-    if (formData.webhook_headers) {
-      try {
-        formData.webhook_headers = JSON.parse(formData.webhook_headers)
-      } catch (e) {
-        alert('Invalid JSON format in webhook headers')
-        submitting.value = false
-        return
+    if (form.value.type === 'telegram') {
+      config = {
+        bot_token: form.value.telegram_bot_token,
+        chat_id: form.value.telegram_chat_id
+      }
+    } else if (form.value.type === 'discord') {
+      config = {
+        webhook_url: form.value.discord_webhook_url
+      }
+    } else if (form.value.type === 'slack') {
+      config = {
+        webhook_url: form.value.slack_webhook_url,
+        channel: form.value.slack_channel || null
+      }
+    } else if (form.value.type === 'webhook') {
+      config = {
+        webhook_url: form.value.webhook_url,
+        method: form.value.webhook_method || 'POST'
+      }
+      
+      // Parse JSON fields
+      if (form.value.webhook_headers) {
+        try {
+          config.headers = JSON.parse(form.value.webhook_headers)
+        } catch (e) {
+          alert('Invalid JSON format in webhook headers')
+          submitting.value = false
+          return
+        }
+      }
+      
+      if (form.value.webhook_payload) {
+        try {
+          config.payload = JSON.parse(form.value.webhook_payload)
+        } catch (e) {
+          alert('Invalid JSON format in webhook payload')
+          submitting.value = false
+          return
+        }
       }
     }
     
-    if (formData.webhook_payload) {
-      try {
-        formData.webhook_payload = JSON.parse(formData.webhook_payload)
-      } catch (e) {
-        alert('Invalid JSON format in webhook payload')
-        submitting.value = false
-        return
-      }
+    const formData = {
+      name: form.value.name,
+      type: form.value.type,
+      config: config
     }
     
     let response
@@ -463,12 +487,27 @@ async function submitForm() {
     if (response.data.success) {
       await fetchChannels()
       cancelForm()
+      alert(editingChannel.value ? 'Channel berhasil diupdate!' : 'Channel berhasil dibuat!')
     } else {
-      alert(response.data.message || 'Failed to save channel')
+      alert(response.data.message || 'Gagal menyimpan channel')
     }
   } catch (err) {
     console.error('Failed to save channel:', err)
-    alert('An error occurred while saving the channel')
+    console.error('Error details:', err.response?.data)
+    
+    let errorMessage = 'Terjadi kesalahan saat menyimpan channel'
+    
+    if (err.response?.data?.errors) {
+      // Validation errors
+      const errors = err.response.data.errors
+      errorMessage = Object.values(errors).flat().join('\n')
+    } else if (err.response?.data?.message) {
+      errorMessage = err.response.data.message
+    } else if (err.message) {
+      errorMessage = err.message
+    }
+    
+    alert(`Error: ${errorMessage}`)
   } finally {
     submitting.value = false
   }
@@ -500,13 +539,23 @@ async function testChannel() {
     const response = await api.notificationChannels.test(editingChannel.value.id)
     
     if (response.data.success) {
-      alert('Test notification sent successfully!')
+      alert('Notifikasi test berhasil dikirim! Periksa Discord channel Anda.')
     } else {
-      alert(response.data.message || 'Failed to send test notification')
+      alert(response.data.message || 'Gagal mengirim notifikasi test')
     }
   } catch (err) {
     console.error('Failed to test channel:', err)
-    alert('An error occurred while testing the channel')
+    console.error('Error response:', err.response?.data)
+    
+    let errorMessage = 'Terjadi kesalahan saat mengirim notifikasi test'
+    
+    if (err.response?.data?.message) {
+      errorMessage = err.response.data.message
+    } else if (err.message) {
+      errorMessage = err.message
+    }
+    
+    alert(`Error: ${errorMessage}`)
   } finally {
     testing.value = false
   }
@@ -517,13 +566,23 @@ async function testChannelById(channelId) {
     const response = await api.notificationChannels.test(channelId)
     
     if (response.data.success) {
-      alert('Test notification sent successfully!')
+      alert('Notifikasi test berhasil dikirim! Periksa Discord channel Anda.')
     } else {
-      alert(response.data.message || 'Failed to send test notification')
+      alert(response.data.message || 'Gagal mengirim notifikasi test')
     }
   } catch (err) {
     console.error('Failed to test channel:', err)
-    alert('An error occurred while testing the channel')
+    console.error('Error response:', err.response?.data)
+    
+    let errorMessage = 'Terjadi kesalahan saat mengirim notifikasi test'
+    
+    if (err.response?.data?.message) {
+      errorMessage = err.response.data.message
+    } else if (err.message) {
+      errorMessage = err.message
+    }
+    
+    alert(`Error: ${errorMessage}`)
   }
 }
 

@@ -199,6 +199,8 @@
             required
             class="form-control"
           >
+            <option :value="1">1 second (Realtime)</option>
+            <option :value="5">5 seconds</option>
             <option :value="10">10 seconds</option>
             <option :value="30">30 seconds</option>
             <option :value="60">1 minute</option>
@@ -207,6 +209,7 @@
             <option :value="1800">30 minutes</option>
             <option :value="3600">1 hour</option>
           </select>
+          <small class="form-help">Minimum interval is 1 second for realtime monitoring</small>
         </div>
 
         <div class="form-group">
@@ -323,7 +326,7 @@ const form = ref({
   name: '',
   type: 'http',
   target: '',
-  interval_seconds: 10,
+  interval_seconds: 1,
   timeout_seconds: 30,
   retry_count: 3,
   is_enabled: true,
@@ -422,8 +425,16 @@ function onTypeChange() {
 
 async function submitForm() {
   submitting.value = true
+  error.value = null
   
   try {
+    // Validate interval_seconds
+    if (form.value.interval_seconds < 1) {
+      error.value = 'Check interval must be at least 1 second'
+      submitting.value = false
+      return
+    }
+
     // Prepare form data
     const formData = { ...form.value }
     
@@ -432,7 +443,7 @@ async function submitForm() {
       try {
         formData.http_headers = JSON.parse(formData.http_headers)
       } catch (e) {
-        alert('Invalid JSON format in HTTP headers')
+        error.value = 'Invalid JSON format in HTTP headers'
         submitting.value = false
         return
       }
@@ -443,11 +454,11 @@ async function submitForm() {
     if (result.success) {
       router.push(`/monitors/${route.params.id}`)
     } else {
-      alert(result.message || 'Failed to update monitor')
+      error.value = result.message || 'Failed to update monitor'
     }
   } catch (err) {
-    alert('An error occurred while updating the monitor')
-    console.error(err)
+    console.error('Update monitor error:', err)
+    error.value = err.response?.data?.message || err.message || 'An error occurred while updating the monitor'
   } finally {
     submitting.value = false
   }
@@ -540,6 +551,14 @@ async function deleteMonitor() {
   margin-top: 5px;
   font-size: 0.8em;
   color: #7f8c8d;
+}
+
+.form-help {
+  color: #6c757d;
+  font-size: 0.75em;
+  margin-top: 5px;
+  display: block;
+  font-style: italic;
 }
 
 .channel-list {

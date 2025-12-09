@@ -76,7 +76,7 @@ class ProcessMonitorCheck implements ShouldQueue
                 'monitor_type' => $this->monitor->type,
                 'monitor_url' => $this->monitor->target,
                 'worker_pid' => getmypid(),
-                'job_id' => $this->job->getJobId() ?? 'unknown'
+                'job_id' => $this->job?->getJobId() ?? 'manual'
             ]
         );
 
@@ -169,6 +169,9 @@ class ProcessMonitorCheck implements ShouldQueue
                 $errorMessage = $e->getMessage();
                 $latency = (microtime(true) - $startTime) * 1000;
                 
+                // Check if this is a critical error that should create incident immediately
+                $isCriticalError = $this->isCriticalError($errorMessage);
+                
                 // Log check failure
                 MonitoringLog::logEvent(
                     $this->monitor->id,
@@ -177,7 +180,8 @@ class ProcessMonitorCheck implements ShouldQueue
                     [
                         'error' => $errorMessage,
                         'exception_type' => get_class($e),
-                        'execution_time_ms' => $latency
+                        'execution_time_ms' => $latency,
+                        'is_critical_error' => $isCriticalError
                     ],
                     $latency,
                     $errorMessage
@@ -243,7 +247,7 @@ class ProcessMonitorCheck implements ShouldQueue
             }
 
             // Handle incident management (FR-12, FR-13)
-            $this->handleIncidents($status, $previousStatus);
+            $this->handleIncidents($status, $previousStatus, $errorMessage, $httpStatus);
 
             // Log the check
             Log::info("Monitor check completed", [
@@ -428,26 +432,61 @@ class ProcessMonitorCheck implements ShouldQueue
         return $httpResult;
     }
 
-    protected function handleIncidents(string $currentStatus, string $previousStatus): void
+    protected function handleIncidents(string $currentStatus, string $previousStatus, ?string $errorMessage = null, ?int $httpStatus = null): void
     {
-        // Only create/resolve incidents when status actually changes (FR-11)
-        if ($currentStatus === $previousStatus) {
-            return;
-        }
-
         $lastIncident = $this->monitor->incidents()
             ->where('resolved', false)
             ->latest('started_at')
             ->first();
 
+        // Check if this is a critical error that requires immediate incident creation
+        $isCriticalError = $errorMessage && $this->isCriticalError($errorMessage, $httpStatus);
+
+        // Create incident immediately for critical errors (internal server error, unreachable, connection failed)
+        if ($currentStatus === 'down' && $isCriticalError && !$lastIncident) {
+            $incidentDescription = $this->getCriticalErrorDescription($errorMessage, $httpStatus);
+            
+            $incident = Incident::create([
+                'monitor_id' => $this->monitor->id,
+                'started_at' => now(),
+                'resolved' => false,
+                'status' => 'open',
+                'alert_status' => 'none',
+                'description' => $incidentDescription,
+            ]);
+
+            Log::warning("Critical error incident created immediately", [
+                'monitor_id' => $this->monitor->id,
+                'incident_id' => $incident->id,
+                'error_message' => $errorMessage,
+                'http_status' => $httpStatus,
+                'error_type' => 'critical'
+            ]);
+
+            // Send notification immediately for critical errors
+            SendNotification::dispatch($this->monitor, 'down', $incident);
+            return;
+        }
+
+        // Normal status change handling
+        if ($currentStatus === $previousStatus && !$isCriticalError) {
+            return;
+        }
+
         if ($currentStatus === 'down' && $previousStatus !== 'down') {
             // Start new incident when going from UP/UNKNOWN to DOWN (FR-12)
             if (!$lastIncident) {
+                $incidentDescription = $errorMessage 
+                    ? "Monitor went down: {$errorMessage}" 
+                    : "Monitor went down from status: {$previousStatus}";
+
                 $incident = Incident::create([
                     'monitor_id' => $this->monitor->id,
                     'started_at' => now(),
                     'resolved' => false,
-                    'description' => "Monitor went down from status: {$previousStatus}",
+                    'status' => 'open',
+                    'alert_status' => 'none',
+                    'description' => $incidentDescription,
                 ]);
 
                 Log::info("New incident created", [
@@ -461,15 +500,44 @@ class ProcessMonitorCheck implements ShouldQueue
                 if ($this->monitor->consecutive_failures >= $this->monitor->notify_after_retries) {
                     SendNotification::dispatch($this->monitor, 'down', $incident);
                 }
+
+                // Critical Alert: Send special notification when service is down 20 times consecutively
+                // Only send if we haven't already sent a critical alert for this outage
+                if ($this->monitor->consecutive_failures == 20 && !$this->hasCriticalAlertBeenSent()) {
+                    $this->sendCriticalDownAlert($incident);
+                    
+                    // Set incident status based on alert handling
+                    if ($incident && !$incident->hasCriticalAlertBeenSent()) {
+                        $incident->updateAlertStatus('critical_sent', [
+                            'consecutive_failures' => $this->monitor->consecutive_failures,
+                            'estimated_downtime_minutes' => $this->calculateDowntimeDuration()
+                        ]);
+                        
+                        // Mark as pending if not yet handled
+                        if ($incident->status === 'open') {
+                            $incident->update(['status' => 'pending']);
+                            $incident->logAlert('incident_escalated', 'Incident escalated to pending due to critical alert');
+                        }
+                    }
+                }
             }
         } else if ($currentStatus === 'up' && $previousStatus === 'down' && $lastIncident) {
             // Resolve existing incident when going from DOWN to UP (FR-13)
             $duration = now()->diffInSeconds($lastIncident->started_at);
             
+            // Auto-resolve incident when service comes back up
             $lastIncident->update([
                 'ended_at' => now(),
                 'resolved' => true,
+                'status' => 'resolved',
                 'description' => ($lastIncident->description ?? '') . " | Resolved after {$duration} seconds",
+            ]);
+
+            // Log the resolution
+            $lastIncident->logAlert('incident_auto_resolved', 'Incident automatically resolved - service back online', [
+                'duration_seconds' => $duration,
+                'resolution_method' => 'automatic',
+                'final_status' => 'up'
             ]);
 
             Log::info("Incident resolved", [
@@ -478,6 +546,7 @@ class ProcessMonitorCheck implements ShouldQueue
                 'duration_seconds' => $duration,
                 'previous_status' => $previousStatus,
                 'current_status' => $currentStatus,
+                'final_incident_status' => $lastIncident->status,
             ]);
 
             // Send recovery notification (FR-14)
@@ -875,5 +944,220 @@ class ProcessMonitorCheck implements ShouldQueue
                 );
             }
         }
+    }
+
+    /**
+     * Send critical alert when service has been down for 20 consecutive checks
+     * This indicates a serious service outage that requires immediate attention
+     */
+    private function sendCriticalDownAlert($incident): void
+    {
+        try {
+            // Log the critical alert
+            Log::critical("CRITICAL ALERT: Service down for 20 consecutive checks", [
+                'monitor_id' => $this->monitor->id,
+                'monitor_name' => $this->monitor->name,
+                'monitor_target' => $this->monitor->target,
+                'consecutive_failures' => $this->monitor->consecutive_failures,
+                'incident_id' => $incident?->id,
+                'last_error' => $this->monitor->last_error,
+                'started_failing_at' => $this->monitor->last_error_at,
+                'notification_timestamp' => now()->toISOString()
+            ]);
+
+            // Create monitoring log entry for critical alert
+            MonitoringLog::logEvent(
+                $this->monitor->id,
+                'critical_down_alert',
+                'down',
+                [
+                    'consecutive_failures' => $this->monitor->consecutive_failures,
+                    'alert_type' => 'critical_service_outage',
+                    'requires_immediate_attention' => true,
+                    'incident_id' => $incident?->id,
+                    'downtime_duration_minutes' => $this->calculateDowntimeDuration(),
+                ]
+            );
+
+            // Send critical notification to all notification channels
+            // Use high priority and special message format
+            $criticalMessage = $this->buildCriticalAlertMessage();
+            
+            SendNotification::dispatch(
+                $this->monitor, 
+                'critical_down',
+                $criticalMessage,
+                $incident,
+                [
+                    'priority' => 'critical',
+                    'alert_type' => 'service_outage_20_failures',
+                    'requires_immediate_action' => true
+                ]
+            );
+
+            // Update monitor with critical alert flag to prevent spam
+            $this->monitor->update([
+                'last_critical_alert_sent' => now()
+            ]);
+
+        } catch (Exception $e) {
+            Log::error("Failed to send critical down alert", [
+                'monitor_id' => $this->monitor->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+    }
+
+    /**
+     * Build critical alert message with detailed information
+     */
+    private function buildCriticalAlertMessage(): string
+    {
+        $downtime = $this->calculateDowntimeDuration();
+        
+        return "🚨 CRITICAL SERVICE OUTAGE ALERT 🚨\n\n" .
+               "Service: {$this->monitor->name}\n" .
+               "Target: {$this->monitor->target}\n" .
+               "Status: DOWN for {$this->monitor->consecutive_failures} consecutive checks\n" .
+               "Estimated Downtime: ~{$downtime} minutes\n" .
+               "Last Error: {$this->monitor->last_error}\n\n" .
+               "⚠️ IMMEDIATE ACTION REQUIRED ⚠️\n" .
+               "This service has been unresponsive for an extended period.\n" .
+               "Please investigate and resolve this issue immediately.\n\n" .
+               "Incident Time: " . now()->format('Y-m-d H:i:s T') . "\n" .
+               "Alert Generated: " . now()->toISOString();
+    }
+
+    /**
+     * Check if error message indicates a critical error
+     */
+    protected function isCriticalError(?string $errorMessage, ?int $httpStatus = null): bool
+    {
+        if (!$errorMessage && !$httpStatus) {
+            return false;
+        }
+
+        // Check HTTP status codes (500-599 are server errors)
+        if ($httpStatus >= 500 && $httpStatus < 600) {
+            return true;
+        }
+
+        // Check error message patterns
+        $criticalPatterns = [
+            '/internal server error/i',
+            '/500 internal/i',
+            '/502 bad gateway/i',
+            '/503 service unavailable/i',
+            '/504 gateway timeout/i',
+            '/host unreachable/i',
+            '/connection refused/i',
+            '/connection timed out/i',
+            '/connection failed/i',
+            '/could not resolve host/i',
+            '/network unreachable/i',
+            '/no route to host/i',
+            '/tcp connection failed/i',
+            '/ping failed/i',
+            '/service unavailable/i',
+            '/cannot connect/i',
+            '/failed to connect/i',
+        ];
+
+        foreach ($criticalPatterns as $pattern) {
+            if (preg_match($pattern, $errorMessage)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get human-readable description for critical errors
+     */
+    protected function getCriticalErrorDescription(?string $errorMessage, ?int $httpStatus = null): string
+    {
+        $description = "🚨 Critical Error Detected: ";
+
+        // Specific HTTP status code descriptions
+        if ($httpStatus) {
+            switch ($httpStatus) {
+                case 500:
+                    $description .= "Internal Server Error (500) - The server encountered an unexpected condition";
+                    break;
+                case 502:
+                    $description .= "Bad Gateway (502) - Invalid response from upstream server";
+                    break;
+                case 503:
+                    $description .= "Service Unavailable (503) - Service is temporarily unavailable";
+                    break;
+                case 504:
+                    $description .= "Gateway Timeout (504) - Upstream server timeout";
+                    break;
+                default:
+                    if ($httpStatus >= 500) {
+                        $description .= "Server Error ({$httpStatus})";
+                    }
+            }
+        }
+
+        // Check for specific error patterns
+        if ($errorMessage) {
+            if (stripos($errorMessage, 'host unreachable') !== false || 
+                stripos($errorMessage, 'network unreachable') !== false) {
+                $description .= " - Host/Network Unreachable - Cannot reach the target server";
+            } elseif (stripos($errorMessage, 'connection refused') !== false) {
+                $description .= " - Connection Refused - Server actively refused the connection";
+            } elseif (stripos($errorMessage, 'connection timed out') !== false || 
+                      stripos($errorMessage, 'connection failed') !== false) {
+                $description .= " - Connection Failed - Unable to establish connection with server";
+            } elseif (stripos($errorMessage, 'could not resolve host') !== false) {
+                $description .= " - DNS Resolution Failed - Cannot resolve hostname";
+            } elseif (!$httpStatus) {
+                $description .= " - " . $errorMessage;
+            }
+        }
+
+        $description .= " | Incident created at " . now()->format('Y-m-d H:i:s');
+        
+        return $description;
+    }
+
+    /**
+     * Check if a critical alert has already been sent for the current outage
+     * A critical alert is considered "already sent" if:
+     * 1. last_critical_alert_sent is not null, AND
+     * 2. The alert was sent after the current outage started (after last successful check)
+     */
+    private function hasCriticalAlertBeenSent(): bool
+    {
+        if (!$this->monitor->last_critical_alert_sent) {
+            return false;
+        }
+
+        // Find the most recent successful check before the current outage
+        $lastSuccessfulCheck = MonitorCheck::where('monitor_id', $this->monitor->id)
+            ->where('status', 'up')
+            ->orderBy('checked_at', 'desc')
+            ->first();
+
+        if (!$lastSuccessfulCheck) {
+            // If no successful check found, check if alert was sent recently (within last hour)
+            return $this->monitor->last_critical_alert_sent->greaterThan(now()->subHour());
+        }
+
+        // Critical alert was sent after the last successful check, so it's for this outage
+        return $this->monitor->last_critical_alert_sent->greaterThan($lastSuccessfulCheck->checked_at);
+    }
+
+    /**
+     * Calculate approximate downtime duration in minutes
+     */
+    private function calculateDowntimeDuration(): int
+    {
+        // Estimate downtime based on consecutive failures and check interval
+        $estimatedDowntimeSeconds = $this->monitor->consecutive_failures * $this->monitor->interval_seconds;
+        return (int) ceil($estimatedDowntimeSeconds / 60);
     }
 }

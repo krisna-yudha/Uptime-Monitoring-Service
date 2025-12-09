@@ -8,6 +8,8 @@ use App\Models\Monitor;
 use App\Jobs\SendNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class NotificationChannelController extends Controller
@@ -148,26 +150,194 @@ class NotificationChannelController extends Controller
             ], 403);
         }
 
-        // Create a dummy monitor for testing
-        $testMonitor = new Monitor([
-            'name' => 'Test Monitor',
-            'type' => 'http',
-            'target' => 'https://example.com',
-        ]);
-        $testMonitor->id = 0;
-
         try {
-            SendNotification::dispatch($testMonitor, 'test', null, $notificationChannel);
+            // Send test notification directly without using queue
+            $this->sendTestNotification($notificationChannel);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Test notification has been queued successfully'
+                'message' => 'Test notification sent successfully'
             ]);
         } catch (\Exception $e) {
+            Log::error('Test notification failed', [
+                'channel_id' => $notificationChannel->id,
+                'channel_type' => $notificationChannel->type,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to send test notification: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Send test notification directly to a channel
+     */
+    private function sendTestNotification(NotificationChannel $channel): void
+    {
+        $message = [
+            'title' => '🧪 Test Notification',
+            'message' => "This is a test notification from your Uptime Monitor\n\n" .
+                       "⏰ **Test Time:** " . now()->format('Y-m-d H:i:s') . "\n" .
+                       "✅ If you receive this, notifications are working correctly!",
+            'color' => '#3742fa',
+            'timestamp' => now()->toISOString(),
+        ];
+
+        switch ($channel->type) {
+            case 'telegram':
+                $this->sendTelegramTest($channel, $message);
+                break;
+            case 'discord':
+                $this->sendDiscordTest($channel, $message);
+                break;
+            case 'slack':
+                $this->sendSlackTest($channel, $message);
+                break;
+            case 'webhook':
+                $this->sendWebhookTest($channel, $message);
+                break;
+            default:
+                throw new \Exception("Unsupported notification channel type: {$channel->type}");
+        }
+    }
+
+    private function sendTelegramTest(NotificationChannel $channel, array $message): void
+    {
+        $config = $channel->config;
+        $botToken = $config['bot_token'] ?? '';
+        $chatId = $config['chat_id'] ?? '';
+
+        if (empty($botToken) || empty($chatId)) {
+            throw new \Exception("Telegram bot token or chat ID not configured");
+        }
+
+        $response = Http::withOptions([
+            'verify' => false, // Disable SSL verification for local development
+        ])->timeout(30)
+            ->post("https://api.telegram.org/bot{$botToken}/sendMessage", [
+                'chat_id' => $chatId,
+                'text' => $message['message'],
+                'parse_mode' => 'Markdown',
+                'disable_web_page_preview' => true,
+            ]);
+
+        if (!$response->successful()) {
+            throw new \Exception("Telegram API error: " . $response->body());
+        }
+    }
+
+    private function sendDiscordTest(NotificationChannel $channel, array $message): void
+    {
+        $config = $channel->config;
+        $webhookUrl = $config['webhook_url'] ?? '';
+
+        if (empty($webhookUrl)) {
+            throw new \Exception("Discord webhook URL not configured");
+        }
+
+        $payload = [
+            'embeds' => [
+                [
+                    'title' => $message['title'],
+                    'description' => $message['message'],
+                    'color' => hexdec(str_replace('#', '', $message['color'])),
+                    'timestamp' => $message['timestamp'],
+                    'footer' => [
+                        'text' => 'Uptime Monitor',
+                    ],
+                ]
+            ]
+        ];
+
+        $response = Http::withOptions([
+            'verify' => false, // Disable SSL verification for local development
+        ])->timeout(30)->post($webhookUrl, $payload);
+
+        if (!$response->successful()) {
+            $statusCode = $response->status();
+            $errorBody = $response->body();
+            throw new \Exception("Discord webhook error (HTTP {$statusCode}): {$errorBody}");
+        }
+    }
+
+    private function sendSlackTest(NotificationChannel $channel, array $message): void
+    {
+        $config = $channel->config;
+        $webhookUrl = $config['webhook_url'] ?? '';
+
+        if (empty($webhookUrl)) {
+            throw new \Exception("Slack webhook URL not configured");
+        }
+
+        $payload = [
+            'text' => $message['title'],
+            'attachments' => [
+                [
+                    'text' => $message['message'],
+                    'color' => $message['color'],
+                    'ts' => now()->timestamp,
+                ]
+            ]
+        ];
+
+        if (!empty($config['channel'])) {
+            $payload['channel'] = $config['channel'];
+        }
+
+        $response = Http::withOptions([
+            'verify' => false, // Disable SSL verification for local development
+        ])->timeout(30)->post($webhookUrl, $payload);
+
+        if (!$response->successful()) {
+            throw new \Exception("Slack webhook error: " . $response->body());
+        }
+    }
+
+    private function sendWebhookTest(NotificationChannel $channel, array $message): void
+    {
+        $config = $channel->config;
+        $webhookUrl = $config['webhook_url'] ?? '';
+        $method = strtoupper($config['method'] ?? 'POST');
+
+        if (empty($webhookUrl)) {
+            throw new \Exception("Webhook URL not configured");
+        }
+
+        $payload = $config['payload'] ?? [
+            'message' => $message['message'],
+            'title' => $message['title'],
+            'timestamp' => $message['timestamp'],
+            'type' => 'test',
+        ];
+
+        // Replace template variables
+        $payload = json_decode(
+            str_replace(
+                ['{{message}}', '{{status}}', '{{monitor_name}}', '{{timestamp}}'],
+                [$message['message'], 'test', 'Test Monitor', $message['timestamp']],
+                json_encode($payload)
+            ),
+            true
+        );
+
+        $headers = $config['headers'] ?? [];
+        
+        $request = Http::withOptions([
+            'verify' => false, // Disable SSL verification for local development
+        ])->timeout(30);
+        
+        foreach ($headers as $key => $value) {
+            $request = $request->withHeader($key, $value);
+        }
+
+        $response = $request->send($method, $webhookUrl, ['json' => $payload]);
+
+        if (!$response->successful()) {
+            throw new \Exception("Webhook error: " . $response->body());
         }
     }
 }

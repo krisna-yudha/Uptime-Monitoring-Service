@@ -254,6 +254,9 @@ export const useMonitorStore = defineStore('monitors', () => {
     loading,
     error,
     
+    // API access (for direct API calls)
+    api,
+    
     // Actions
     fetchMonitors,
     fetchMonitorsSilently,

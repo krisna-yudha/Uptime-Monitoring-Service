@@ -15,20 +15,54 @@ class SendNotification implements ShouldQueue
 {
     use Queueable;
 
+    /**
+     * The number of times the job may be attempted.
+     *
+     * @var int
+     */
+    public $tries = 3;
+
+    /**
+     * The number of seconds to wait before retrying the job.
+     *
+     * @var int
+     */
+    public $backoff = 5;
+
     protected Monitor $monitor;
-    protected string $type; // 'down', 'up', 'test'
+    protected string $type; // 'down', 'up', 'test', 'critical_down'
     protected ?Incident $incident;
     protected ?NotificationChannel $channel;
+    protected ?string $customMessage;
+    protected array $metadata;
 
     /**
      * Create a new job instance.
      */
-    public function __construct(Monitor $monitor, string $type, ?Incident $incident = null, ?NotificationChannel $channel = null)
+    public function __construct(Monitor $monitor, string $type, $messageOrIncident = null, ?Incident $incident = null, array $metadata = [])
     {
         $this->monitor = $monitor;
         $this->type = $type;
-        $this->incident = $incident;
-        $this->channel = $channel;
+        $this->metadata = $metadata;
+        
+        // Set queue to notifications
+        $this->onQueue('notifications');
+        
+        // Handle different parameter combinations for backward compatibility
+        if (is_string($messageOrIncident)) {
+            $this->customMessage = $messageOrIncident;
+            $this->incident = $incident;
+        } elseif ($messageOrIncident instanceof Incident) {
+            $this->incident = $messageOrIncident;
+            $this->customMessage = null;
+        } elseif ($messageOrIncident instanceof NotificationChannel) {
+            $this->channel = $messageOrIncident;
+            $this->incident = $incident;
+            $this->customMessage = null;
+        } else {
+            $this->incident = $incident;
+            $this->customMessage = null;
+        }
     }
 
     /**
@@ -44,23 +78,29 @@ class SendNotification implements ShouldQueue
                 $this->sendToChannel($channel);
                 
                 Log::info("Notification sent successfully", [
-                    'monitor_id' => $this->monitor->id,
+                    'monitor_id' => $this->monitor->id ?? 'test',
                     'channel_id' => $channel->id,
                     'channel_type' => $channel->type,
                     'notification_type' => $this->type,
                 ]);
             } catch (Exception $e) {
                 Log::error("Failed to send notification", [
-                    'monitor_id' => $this->monitor->id,
+                    'monitor_id' => $this->monitor->id ?? 'test',
                     'channel_id' => $channel->id,
                     'channel_type' => $channel->type,
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                 ]);
+                
+                // Re-throw exception for test notifications
+                if ($this->type === 'test') {
+                    throw $e;
+                }
             }
         }
 
-        // Update last notification sent timestamp
-        if ($this->type !== 'test') {
+        // Update last notification sent timestamp (skip for test or if monitor not saved)
+        if ($this->type !== 'test' && $this->monitor->exists) {
             $this->monitor->update(['last_notification_sent' => now()]);
         }
     }
@@ -120,6 +160,19 @@ class SendNotification implements ShouldQueue
                     'color' => '#ff4757', // Red
                 ]);
 
+            case 'critical_down':
+                // Use custom message if provided, otherwise build default critical message
+                $message = $this->customMessage ?: $this->buildCriticalDownMessage();
+                
+                return array_merge($baseInfo, [
+                    'status' => '🚨 CRITICAL DOWN',
+                    'title' => "🚨 CRITICAL SERVICE OUTAGE - IMMEDIATE ACTION REQUIRED",
+                    'message' => $message,
+                    'color' => '#ff3742', // Bright Red
+                    'priority' => 'critical',
+                    'consecutive_failures' => $this->monitor->consecutive_failures,
+                ]);
+
             case 'up':
                 $duration = $this->incident ? 
                     now()->diffInSeconds($this->incident->started_at) : 0;
@@ -163,7 +216,9 @@ class SendNotification implements ShouldQueue
 
         $text = $message['message'];
         
-        $response = Http::timeout(30)
+        $response = Http::withOptions([
+            'verify' => false, // Disable SSL verification for local development
+        ])->timeout(30)
             ->post("https://api.telegram.org/bot{$botToken}/sendMessage", [
                 'chat_id' => $chatId,
                 'text' => $text,
@@ -199,10 +254,14 @@ class SendNotification implements ShouldQueue
             ]
         ];
 
-        $response = Http::timeout(30)->post($webhookUrl, $payload);
+        $response = Http::withOptions([
+            'verify' => false, // Disable SSL verification for local development
+        ])->timeout(30)->post($webhookUrl, $payload);
 
         if (!$response->successful()) {
-            throw new Exception("Discord webhook error: " . $response->body());
+            $errorBody = $response->body();
+            $statusCode = $response->status();
+            throw new Exception("Discord webhook error (HTTP {$statusCode}): {$errorBody}");
         }
     }
 
@@ -226,7 +285,9 @@ class SendNotification implements ShouldQueue
             ]
         ];
 
-        $response = Http::timeout(30)->post($webhookUrl, $payload);
+        $response = Http::withOptions([
+            'verify' => false, // Disable SSL verification for local development
+        ])->timeout(30)->post($webhookUrl, $payload);
 
         if (!$response->successful()) {
             throw new Exception("Slack webhook error: " . $response->body());
@@ -248,12 +309,45 @@ class SendNotification implements ShouldQueue
             'incident_id' => $this->incident?->id,
         ]);
 
-        $response = Http::withHeaders($headers)
+        $response = Http::withOptions([
+            'verify' => false, // Disable SSL verification for local development
+        ])->withHeaders($headers)
             ->timeout(30)
             ->post($webhookUrl, $payload);
 
         if (!$response->successful()) {
             throw new Exception("Webhook error: " . $response->body());
         }
+    }
+
+    /**
+     * Build critical down message when service has failed 20 consecutive times
+     */
+    protected function buildCriticalDownMessage(): string
+    {
+        $downtime = $this->calculateDowntimeDuration();
+        
+        return "🚨 **CRITICAL SERVICE OUTAGE ALERT** 🚨\n\n" .
+               "**Service:** {$this->monitor->name}\n" .
+               "**Target:** {$this->monitor->target}\n" .
+               "**Status:** DOWN for {$this->monitor->consecutive_failures} consecutive checks\n" .
+               "**Estimated Downtime:** ~{$downtime} minutes\n" .
+               "**Last Error:** {$this->monitor->last_error}\n\n" .
+               "⚠️ **IMMEDIATE ACTION REQUIRED** ⚠️\n" .
+               "This service has been unresponsive for an extended period.\n" .
+               "Please investigate and resolve this issue immediately.\n\n" .
+               "**Incident Time:** " . now()->format('Y-m-d H:i:s T') . "\n" .
+               "**Alert Generated:** " . now()->toISOString() . "\n" .
+               ($this->incident ? "**Incident ID:** {$this->incident->id}" : "");
+    }
+
+    /**
+     * Calculate approximate downtime duration in minutes
+     */
+    protected function calculateDowntimeDuration(): int
+    {
+        // Estimate downtime based on consecutive failures and check interval
+        $estimatedDowntimeSeconds = $this->monitor->consecutive_failures * $this->monitor->interval_seconds;
+        return (int) ceil($estimatedDowntimeSeconds / 60);
     }
 }

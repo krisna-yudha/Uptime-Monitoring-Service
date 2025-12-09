@@ -37,6 +37,7 @@ class Monitor extends Model
         'pause_until',
         'notification_channels',
         'last_notification_sent',
+        'last_critical_alert_sent',
         'error_message',
         'last_error_at',
     ];
@@ -51,6 +52,7 @@ class Monitor extends Model
         'next_check_at' => 'datetime',
         'pause_until' => 'datetime',
         'last_notification_sent' => 'datetime',
+        'last_critical_alert_sent' => 'datetime',
         'last_error_at' => 'datetime',
     ];
 

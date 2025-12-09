@@ -86,24 +86,24 @@ class RunMonitorChecks extends Command
     }
 
     /**
-     * Run monitor checks in continuous loop every 10 seconds
+     * Run monitor checks in continuous loop every 1 second
      */
     private function runContinuous(): int
     {
-        $this->info('Starting continuous monitor checking every 10 seconds...');
+        $this->info('Starting continuous monitor checking every 1 second...');
         $this->info('Press Ctrl+C to stop.');
 
         while (true) {
             try {
                 $this->runOnce();
                 
-                // Sleep for 10 seconds before next iteration
-                sleep(10);
+                // Sleep for 1 second before next iteration
+                sleep(1);
                 
             } catch (\Exception $e) {
                 $this->error('Error during monitor check: ' . $e->getMessage());
                 // Continue running even if there's an error
-                sleep(10);
+                sleep(1);
             }
         }
 

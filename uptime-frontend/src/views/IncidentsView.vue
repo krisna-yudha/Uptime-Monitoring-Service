@@ -8,8 +8,8 @@
           <select v-model="statusFilter" class="form-control">
             <option value="">All Statuses</option>
             <option value="open">Open</option>
-            <option value="resolved">Resolved</option>
-            <option value="acknowledged">Acknowledged</option>
+            <option value="pending">Pending (Ditangani)</option>
+            <option value="resolved">Resolved (Selesai)</option>
           </select>
         </div>
         
@@ -30,6 +30,12 @@
 
     <div v-if="loading" class="loading">Loading incidents...</div>
     
+    <div v-else-if="serverError" class="server-error">
+      <h2>Server Error</h2>
+      <p>Tidak dapat terhubung ke Laravel server. Pastikan server berjalan di <code>http://localhost:8000</code></p>
+      <button @click="retryConnection" class="btn btn-primary">Coba Lagi</button>
+    </div>
+    
     <div v-else-if="filteredIncidents.length === 0" class="no-incidents">
       <h2>No incidents found</h2>
       <p>{{ statusFilter ? 'No incidents match your current filters.' : 'Great! No incidents have been recorded yet.' }}</p>
@@ -40,7 +46,7 @@
         v-for="incident in filteredIncidents"
         :key="incident.id"
         class="incident-card"
-        :class="`incident-${incident.status}`"
+        :class="`incident-${incident.status || 'open'}`"
       >
         <div class="incident-header">
           <div class="incident-info">
@@ -52,9 +58,9 @@
             <div class="incident-meta">
               <span 
                 class="status-badge"
-                :class="`status-${incident.status}`"
+                :class="`status-${incident.status || 'open'}`"
               >
-                {{ incident.status.toUpperCase() }}
+                {{ getStatusLabel(incident.status || 'open') }}
               </span>
               <span class="incident-duration">
                 {{ getIncidentDuration(incident) }}
@@ -64,19 +70,19 @@
           
           <div class="incident-actions">
             <button
-              v-if="incident.status === 'open'"
-              @click="acknowledgeIncident(incident.id)"
+              v-if="incident.status === 'open' || !incident.status"
+              @click="markAsPending(incident.id)"
               class="btn btn-warning btn-sm"
             >
-              Acknowledge
+              Tandai Ditangani
             </button>
             
             <button
               v-if="incident.status !== 'resolved'"
-              @click="resolveIncident(incident.id)"
+              @click="markAsSolved(incident.id)"
               class="btn btn-success btn-sm"
             >
-              Resolve
+              Tandai Selesai
             </button>
             
             <button
@@ -84,7 +90,7 @@
               @click="reopenIncident(incident.id)"
               class="btn btn-warning btn-sm"
             >
-              Reopen
+              Buka Kembali
             </button>
           </div>
         </div>
@@ -225,6 +231,7 @@ const availableMonitors = ref([])
 const statusFilter = ref('')
 const monitorFilter = ref('')
 const newNotes = ref({})
+const serverError = ref(false)
 
 const pagination = ref({
   current_page: 1,
@@ -234,22 +241,13 @@ const pagination = ref({
 })
 
 const filteredIncidents = computed(() => {
-  let filtered = incidents.value
-  
-  if (statusFilter.value) {
-    filtered = filtered.filter(incident => incident.status === statusFilter.value)
-  }
-  
-  if (monitorFilter.value) {
-    filtered = filtered.filter(incident => incident.monitor_id == monitorFilter.value)
-  }
-  
-  return filtered
+  // Return incidents as-is since filtering is done server-side
+  return incidents.value
 })
 
-onMounted(() => {
-  fetchIncidents()
-  fetchMonitors()
+onMounted(async () => {
+  await fetchIncidents()
+  await fetchMonitors()
 })
 
 watch([statusFilter, monitorFilter], () => {
@@ -276,23 +274,46 @@ async function fetchIncidents() {
     
     const response = await api.incidents.getAll(params)
     
-    if (response.data.success) {
+    if (response.data && response.data.success) {
       const data = response.data.data
-      incidents.value = data.data || data
       
-      // Update pagination info
-      if (data.meta) {
-        pagination.value = {
-          current_page: data.meta.current_page || 1,
-          last_page: data.meta.last_page || 1,
-          per_page: data.meta.per_page || 20,
-          total: data.meta.total || incidents.value.length
+      // Handle both paginated and non-paginated responses
+      if (data.data) {
+        // Paginated response
+        incidents.value = data.data
+        if (data.meta) {
+          pagination.value = {
+            current_page: data.meta.current_page || 1,
+            last_page: data.meta.last_page || 1,
+            per_page: data.meta.per_page || 20,
+            total: data.meta.total || 0
+          }
         }
+      } else if (Array.isArray(data)) {
+        // Direct array response
+        incidents.value = data
+      } else {
+        incidents.value = []
       }
+    } else {
+      incidents.value = []
     }
   } catch (err) {
     console.error('Failed to load incidents:', err)
-    alert('Failed to load incidents')
+    
+    if (err.code === 'ERR_NETWORK') {
+      serverError.value = true
+      console.error('Server tidak dapat dijangkau')
+    } else if (err.response?.status === 500) {
+      alert('Server error. Silakan cek log server Laravel untuk detail error.')
+    } else if (err.response?.status === 401) {
+      // Auth error will be handled by api interceptor
+      console.error('Authentication error')
+    } else {
+      console.error(`Error: ${err.response?.data?.message || err.message}`)
+    }
+    
+    incidents.value = []
   } finally {
     loading.value = false
   }
@@ -307,71 +328,106 @@ async function fetchMonitors() {
   }
 }
 
-async function acknowledgeIncident(incidentId) {
+async function markAsPending(incidentId) {
+  if (!confirm('Apakah Anda yakin ingin menandai incident ini sebagai sedang ditangani?')) {
+    return
+  }
+  
   try {
     const response = await api.incidents.acknowledge(incidentId)
     
-    if (response.data.success) {
+    if (response.data && response.data.success) {
       await fetchIncidents()
     } else {
-      alert(response.data.message || 'Failed to acknowledge incident')
+      alert(response.data?.message || 'Gagal menandai incident sebagai pending')
     }
   } catch (err) {
-    console.error('Failed to acknowledge incident:', err)
-    alert('An error occurred while acknowledging the incident')
+    console.error('Failed to mark incident as pending:', err)
+    
+    if (err.response?.status === 404) {
+      alert('Endpoint tidak ditemukan. Pastikan Laravel server berjalan')
+    } else if (err.response?.status === 401) {
+      alert('Sesi login expired. Silakan login kembali.')
+    } else if (err.code === 'ERR_NETWORK') {
+      alert('Server tidak dapat dijangkau. Pastikan Laravel server berjalan di http://localhost:8000')
+    } else {
+      alert(`Terjadi kesalahan: ${err.response?.data?.message || err.message}`)
+    }
   }
 }
 
-async function resolveIncident(incidentId) {
+async function markAsSolved(incidentId) {
+  if (!confirm('Apakah Anda yakin ingin menandai incident ini sebagai selesai?')) {
+    return
+  }
+  
   try {
     const response = await api.incidents.resolve(incidentId)
     
-    if (response.data.success) {
+    if (response.data && response.data.success) {
       await fetchIncidents()
     } else {
-      alert(response.data.message || 'Failed to resolve incident')
+      alert(response.data?.message || 'Gagal menandai incident sebagai selesai')
     }
   } catch (err) {
-    console.error('Failed to resolve incident:', err)
-    alert('An error occurred while resolving the incident')
+    console.error('Failed to mark incident as solved:', err)
+    
+    if (err.code === 'ERR_NETWORK') {
+      alert('Server tidak dapat dijangkau. Pastikan Laravel server berjalan')
+    } else {
+      alert(`Terjadi kesalahan: ${err.response?.data?.message || err.message}`)
+    }
   }
 }
 
 async function reopenIncident(incidentId) {
-  if (!confirm('Are you sure you want to reopen this incident?')) {
+  if (!confirm('Apakah Anda yakin ingin membuka kembali incident ini?')) {
     return
   }
   
   try {
     const response = await api.incidents.reopen(incidentId)
     
-    if (response.data.success) {
+    if (response.data && response.data.success) {
       await fetchIncidents()
     } else {
-      alert(response.data.message || 'Failed to reopen incident')
+      alert(response.data?.message || 'Gagal membuka kembali incident')
     }
   } catch (err) {
     console.error('Failed to reopen incident:', err)
-    alert('An error occurred while reopening the incident')
+    
+    if (err.code === 'ERR_NETWORK') {
+      alert('Server tidak dapat dijangkau. Pastikan Laravel server berjalan')
+    } else {
+      alert(`Terjadi kesalahan: ${err.response?.data?.message || err.message}`)
+    }
   }
 }
 
 async function addNote(incidentId) {
   const content = newNotes.value[incidentId]?.trim()
-  if (!content) return
+  if (!content) {
+    alert('Silakan masukkan catatan terlebih dahulu')
+    return
+  }
   
   try {
     const response = await api.incidents.addNote(incidentId, { content })
     
-    if (response.data.success) {
+    if (response.data && response.data.success) {
       newNotes.value[incidentId] = ''
       await fetchIncidents()
     } else {
-      alert(response.data.message || 'Failed to add note')
+      alert(response.data?.message || 'Gagal menambahkan catatan')
     }
   } catch (err) {
     console.error('Failed to add note:', err)
-    alert('An error occurred while adding the note')
+    
+    if (err.code === 'ERR_NETWORK') {
+      alert('Server tidak dapat dijangkau. Pastikan Laravel server berjalan')
+    } else {
+      alert(`Terjadi kesalahan: ${err.response?.data?.message || err.message}`)
+    }
   }
 }
 
@@ -410,6 +466,30 @@ function getIncidentDuration(incident) {
 function formatDate(dateString) {
   const date = new Date(dateString)
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
+}
+
+function getStatusLabel(status) {
+  const statusLabels = {
+    'open': 'OPEN',
+    'pending': 'DITANGANI',
+    'investigating': 'INVESTIGASI',
+    'resolved': 'SELESAI'
+  }
+  return statusLabels[status] || status.toUpperCase()
+}
+
+async function retryConnection() {
+  serverError.value = false
+  loading.value = true
+  
+  try {
+    await fetchIncidents()
+    await fetchMonitors()
+  } catch (err) {
+    console.error('Retry failed:', err)
+    serverError.value = true
+    loading.value = false
+  }
 }
 </script>
 
@@ -460,7 +540,7 @@ function formatDate(dateString) {
   border-left-color: #e74c3c;
 }
 
-.incident-card.incident-acknowledged {
+.incident-card.incident-pending {
   border-left-color: #f39c12;
 }
 
@@ -515,7 +595,7 @@ function formatDate(dateString) {
   color: #c62828;
 }
 
-.status-badge.status-acknowledged {
+.status-badge.status-pending {
   background-color: #fff8e1;
   color: #ef6c00;
 }
@@ -688,6 +768,32 @@ function formatDate(dateString) {
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.server-error {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-left: 4px solid #e74c3c;
+}
+
+.server-error h2 {
+  margin: 0 0 15px 0;
+  color: #e74c3c;
+}
+
+.server-error p {
+  margin: 0 0 20px 0;
+  color: #7f8c8d;
+}
+
+.server-error code {
+  background: #f8f9fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
 }
 
 .no-incidents h2 {
