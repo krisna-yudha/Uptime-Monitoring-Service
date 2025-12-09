@@ -14,7 +14,7 @@
               :disabled="!isVisitable(monitor)"
               :title="getVisitTooltip(monitor)"
             >
-              🌐 Visit
+              import { UilSearch } from '@iconscout/vue-unicons' Visit
             </button>
           </div>
           <div class="monitor-meta">
