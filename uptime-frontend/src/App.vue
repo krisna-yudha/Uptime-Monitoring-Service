@@ -43,10 +43,12 @@ body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background-color: #f5f5f5;
   color: #333;
+  overflow-x: hidden;
 }
 
 #app {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .main-content {
@@ -60,6 +62,15 @@ body {
 
 .main-content.with-navbar-collapsed {
   margin-left: 70px;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .main-content.with-navbar,
+  .main-content.with-navbar-collapsed {
+    margin-left: 0;
+    padding-top: 0;
+  }
 }
 
 .card {

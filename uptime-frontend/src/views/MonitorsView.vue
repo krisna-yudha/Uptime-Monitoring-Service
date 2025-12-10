@@ -79,21 +79,61 @@
       <!-- Filters and Controls -->
       <div v-if="filtersExpanded" class="filters">
         <div class="filter-group">
-          <label for="status-filter" class="form-label">Status:</label>
-          <select 
-            id="status-filter"
-            v-model="filters.status" 
-            class="form-control modern-select"
+          <label for="search-filter" class="form-label">Search:</label>
+          <input
+        id="search-filter"
+        v-model="filters.search"
+        type="text"
+        class="form-control"
+        placeholder="Search by name, target, or group..."
           >
-            <option value="">All Status</option>
-            <option value="up">Up</option>
-            <option value="down">Down</option>
-            <option value="unknown">Unknown</option>
-            <option value="invalid">Invalid</option>
-            <option value="validating">Validating</option>
+        </div>
+        
+        <div class="filter-group">
+          <label for="group-filter" class="form-label">Group:</label>
+          <select 
+        id="group-filter"
+        v-model="filters.group" 
+        class="form-control modern-select"
+          >
+        <option value="">All Groups</option>
+        <option value="ungrouped">Ungrouped</option>
+        <option v-for="group in groups" :key="group.id" :value="group.name">
+          {{ group.name }}
+        </option>
           </select>
         </div>
         
+        <!-- <div class="filter-group">
+          <label for="view-mode" class="form-label">View Mode:</label>
+          <div class="view-mode-toggle">
+        <button
+          @click="viewMode = 'list'"
+          class="toggle-btn"
+          :class="{ active: viewMode === 'list' }"
+          title="List View"
+        >
+          📋
+        </button>
+        <button
+          @click="viewMode = 'grid'"
+          class="toggle-btn"
+          :class="{ active: viewMode === 'grid' }"
+          title="Grid View"
+        >
+          ▦
+        </button>
+        <button
+          @click="viewMode = 'grouped'"
+          class="toggle-btn"
+          :class="{ active: viewMode === 'grouped' }"
+          title="Grouped View"
+        >
+          📁
+        </button>
+          </div>
+        </div> -->
+<!--         
         <div class="filter-group">
           <label for="type-filter" class="form-label">Type:</label>
           <select 
@@ -109,66 +149,7 @@
             <option value="keyword">Keyword</option>
             <option value="push">Push</option>
           </select>
-        </div>
-        
-        <!-- <div class="filter-group">
-          <label for="enabled-filter" class="form-label">Enabled:</label>
-          <select 
-            id="enabled-filter"
-            v-model="filters.enabled" 
-            @change="fetchData"
-            class="form-control modern-select"
-          >
-            <option value="">All</option>
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
         </div> -->
-        
-        <!-- <div class="filter-group">
-          <label for="group-filter" class="form-label">Group:</label>
-          <select 
-            id="group-filter"
-            v-model="filters.group" 
-            @change="fetchData"
-            class="form-control modern-select"
-          >
-            <option value="">All Groups</option>
-            <option value="ungrouped">Ungrouped</option>
-            <option v-for="group in groups" :key="group.group_name" :value="group.group_name">
-              {{ group.group_name }} ({{ group.monitors_count }})
-            </option>
-          </select>
-        </div> -->
-        
-        <!-- <div class="filter-group search-group">
-          <label for="search-filter" class="form-label">Search:</label>
-          <div class="search-input-wrapper">
-            <input
-              id="search-filter"
-              v-model="filters.search"
-              @input="debounceSearch"
-              type="text"
-              class="form-control modern-input"
-              placeholder="Search monitors..."
-            >
-            <i class="fas fa-search search-icon"></i>
-          </div>
-        </div> -->
-
-          <!-- <div class="filter-group">
-            <label for="view-mode" class="form-label">View:</label>
-            <select 
-              id="view-mode"
-              v-model="viewMode" 
-              @change="fetchData"
-              class="form-control modern-select"
-            >
-              <option value="grouped">📁 Grouped View</option>
-              <option value="list">📋 List View</option>
-              <option value="grid">🔲 Grid View</option>
-            </select>
-          </div> -->
       </div>
     </div>
 
@@ -361,42 +342,52 @@
 
     <!-- Enhanced Grouped View -->
     <div v-if="viewMode === 'grouped' && !monitorStore.loading && !monitorStore.error" class="grouped-view">
-      <div v-for="(groupData, groupName) in groupedMonitors" :key="groupName" class="group-section">
+      <div v-for="(groupData, groupName) in filteredGroupedMonitors" :key="groupName" class="group-section">
         <div class="group-header">
           <div class="group-title-section">
             <h2>
               <span v-if="groupName === 'Ungrouped'" class="group-icon">📂</span>
               <span v-else class="group-icon">📁</span>
               {{ groupName }}
-              <span class="monitor-count">({{ groupData.monitors.length }})</span>
+              <span class="monitor-count">({{ getFilteredGroupMonitors(groupData.monitors, groupName).length }})</span>
             </h2>
             <p v-if="groupData.description" class="group-description">{{ groupData.description }}</p>
           </div>
           
           <div class="group-stats-enhanced">
             <div class="stat-item">
-              <span class="stat-number up">{{ getGroupUpCount(groupData.monitors) }}</span>
+              <span class="stat-number up">{{ getGroupUpCount(getFilteredGroupMonitors(groupData.monitors, groupName)) }}</span>
               <span class="stat-label">Online</span>
             </div>
             <div class="stat-item">
-              <span class="stat-number down">{{ getGroupDownCount(groupData.monitors) }}</span>
+              <span class="stat-number down">{{ getGroupDownCount(getFilteredGroupMonitors(groupData.monitors, groupName)) }}</span>
               <span class="stat-label">Offline</span>
             </div>
             <div class="stat-item health">
               <span 
                 class="stat-number health-badge"
-                :class="getGroupHealthClass(groupData.monitors)"
+                :class="getGroupHealthClass(getFilteredGroupMonitors(groupData.monitors, groupName))"
               >
-                {{ getGroupHealth(groupData.monitors) }}%
+                {{ getGroupHealth(getFilteredGroupMonitors(groupData.monitors, groupName)) }}%
               </span>
               <span class="stat-label">Health</span>
             </div>
           </div>
         </div>
 
+        <!-- Group Search -->
+        <div class="group-search">
+          <input
+            v-model="groupSearches[groupName]"
+            type="text"
+            class="form-control group-search-input"
+            :placeholder="`Search in ${groupName}...`"
+          >
+        </div>
+
         <div class="group-monitors">
           <div
-            v-for="monitor in groupData.monitors"
+            v-for="monitor in getFilteredGroupMonitors(groupData.monitors, groupName)"
             :key="monitor.id"
             class="monitor-card compact clickable"
             @click="navigateToDetails(monitor.id)"
@@ -445,7 +436,7 @@
     </div>
     
     <!-- Empty State -->
-    <div v-if="!monitorStore.loading && !monitorStore.error && (!filteredMonitors.length && !Object.keys(groupedMonitors).length)" class="empty-state">
+    <div v-if="!monitorStore.loading && !monitorStore.error && (!filteredMonitors.length && !Object.keys(filteredGroupedMonitors).length)" class="empty-state">
       <div class="empty-icon">📊</div>
       <h3 v-if="Object.values(filters).some(f => f && f !== '')">No monitors match your filters</h3>
       <h3 v-else>No monitors found</h3>
@@ -519,6 +510,7 @@ const filters = reactive({
 const viewMode = ref('grouped')
 const groups = ref([])
 const groupedMonitors = ref({})
+const groupSearches = ref({})
 
 const showPauseModal = ref(false)
 const selectedMonitor = ref(null)
@@ -546,7 +538,7 @@ const unknownMonitors = computed(() => {
 })
 
 const totalGroups = computed(() => {
-  return Object.keys(groupedMonitors.value).length
+  return Object.keys(filteredGroupedMonitors.value).length
 })
 
 const overallHealth = computed(() => {
@@ -618,6 +610,52 @@ const filteredMonitors = computed(() => {
   return result
 })
 
+// Computed property for filtered grouped monitors (client-side filtering)
+const filteredGroupedMonitors = computed(() => {
+  if (!groupedMonitors.value || Object.keys(groupedMonitors.value).length === 0) {
+    return {}
+  }
+  
+  let result = { ...groupedMonitors.value }
+  
+  // Apply group filter - only show specific group
+  if (filters.group && filters.group !== '') {
+    if (filters.group === 'ungrouped') {
+      result = { 'Ungrouped': result['Ungrouped'] || { monitors: [], description: '' } }
+    } else {
+      result = { [filters.group]: result[filters.group] || { monitors: [], description: '' } }
+    }
+  }
+  
+  // Apply global search filter - search in group names
+  if (filters.search && filters.search.trim() !== '') {
+    const searchTerm = filters.search.toLowerCase()
+    const filtered = {}
+    
+    Object.keys(result).forEach(groupName => {
+      // Check if group name matches search
+      if (groupName.toLowerCase().includes(searchTerm)) {
+        filtered[groupName] = result[groupName]
+      } else {
+        // Check if any monitor in this group matches search
+        const matchingMonitors = result[groupName].monitors.filter(monitor => {
+          const nameMatch = monitor.name?.toLowerCase().includes(searchTerm)
+          const targetMatch = monitor.target?.toLowerCase().includes(searchTerm)
+          return nameMatch || targetMatch
+        })
+        
+        if (matchingMonitors.length > 0) {
+          filtered[groupName] = result[groupName]
+        }
+      }
+    })
+    
+    result = filtered
+  }
+  
+  return result
+})
+
 // Helper functions for groups
 function getGroupUpCount(monitors) {
   return monitors.filter(m => m.last_status === 'up').length
@@ -625,6 +663,23 @@ function getGroupUpCount(monitors) {
 
 function getGroupDownCount(monitors) {
   return monitors.filter(m => m.last_status === 'down').length
+}
+
+function getFilteredGroupMonitors(monitors, groupName) {
+  if (!monitors || !Array.isArray(monitors)) return []
+  
+  const searchTerm = groupSearches.value[groupName]
+  
+  if (!searchTerm || searchTerm.trim() === '') {
+    return monitors
+  }
+  
+  const search = searchTerm.toLowerCase()
+  return monitors.filter(monitor => {
+    const nameMatch = monitor.name?.toLowerCase().includes(search)
+    const targetMatch = monitor.target?.toLowerCase().includes(search)
+    return nameMatch || targetMatch
+  })
 }
 
 // Helper functions
@@ -711,11 +766,12 @@ async function fetchGroupedMonitors() {
   try {
     const params = {}
     
+    // Only send status, type, and enabled filters to backend
+    // Search and group filters will be handled client-side
     if (filters.status) params.status = filters.status
     if (filters.type) params.type = filters.type
     if (filters.enabled) params.enabled = filters.enabled
-    if (filters.group) params.group = filters.group
-    if (filters.search) params.search = filters.search
+    // Don't send filters.group or filters.search to backend for grouped view
     
     console.log('Fetching grouped monitors with params:', params)
     const response = await monitorStore.getGroupedMonitors(params)
@@ -891,9 +947,39 @@ onMounted(async () => {
 watch(
   () => [filters.status, filters.type, filters.enabled, filters.group, filters.search],
   () => {
-    // Computed property automatically handles filtering
+    // Trigger data fetch when filters change
+    if (viewMode.value === 'grouped') {
+      fetchGroupedMonitors()
+    } else {
+      fetchData()
+    }
   },
   { deep: true }
+)
+
+// Watch view mode changes
+watch(
+  () => viewMode.value,
+  (newMode) => {
+    if (newMode === 'grouped') {
+      fetchGroupedMonitors()
+    }
+  }
+)
+
+// Initialize group searches when grouped monitors change
+watch(
+  () => groupedMonitors.value,
+  (newGroups) => {
+    if (newGroups) {
+      Object.keys(newGroups).forEach(groupName => {
+        if (!groupSearches.value[groupName]) {
+          groupSearches.value[groupName] = ''
+        }
+      })
+    }
+  },
+  { deep: true, immediate: true }
 )
 
 onUnmounted(() => {
@@ -1349,6 +1435,33 @@ onUnmounted(() => {
   color: #f44336;
 }
 
+.group-search {
+  margin-bottom: 16px;
+  padding: 0 4px;
+}
+
+.group-search-input {
+  width: 100%;
+  padding: 10px 16px;
+  border: 2px solid #e3e8f5;
+  border-radius: 8px;
+  font-size: 0.95em;
+  transition: all 0.3s ease;
+  background: white;
+  color: #2c3e50;
+}
+
+.group-search-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.group-search-input::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
 .group-monitors {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -1530,33 +1643,151 @@ onUnmounted(() => {
 }
 
 /* Responsive */
+@media (max-width: 1024px) {
+  .stats-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
+  .monitors {
+    padding: 1rem;
+    padding-top: 5rem;
+  }
+  
+  .page-header {
+    padding: 1.25rem;
+  }
+  
   .header-content {
     flex-direction: column;
     align-items: stretch;
+    gap: 1rem;
+  }
+  
+  .header-main {
+    text-align: center;
   }
   
   .header-actions {
-    flex-direction: column-reverse;
+    flex-direction: row;
+    justify-content: stretch;
+  }
+  
+  .header-actions .btn {
+    flex: 1;
+  }
+  
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
   }
   
   .filters {
     grid-template-columns: 1fr;
-    padding: 20px;
+    padding: 1rem;
   }
   
   .monitors-grid {
     grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .monitor-card {
+    padding: 1.25rem;
+  }
+  
+  .monitor-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .monitor-actions .btn {
+    flex: 1 1 calc(50% - 0.25rem);
+    justify-content: center;
+    font-size: 0.875rem;
   }
   
   .group-header {
     flex-direction: column;
     text-align: center;
-    padding: 20px;
+    padding: 1.25rem;
+    gap: 1rem;
   }
   
+  .group-stats-enhanced {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  
+  .modal {
+    width: 95%;
+    margin: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
   .monitors {
-    padding: 10px;
+    padding: 0.75rem;
+  }
+  
+  .page-header {
+    padding: 1rem;
+  }
+  
+  .header-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .header-actions .btn {
+    width: 100%;
+  }
+  
+  .stats-cards {
+    grid-template-columns: 1fr;
+    gap: 0.625rem;
+  }
+  
+  .stat-card {
+    padding: 1rem;
+  }
+  
+  .monitor-card {
+    padding: 1rem;
+  }
+  
+  .monitor-header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .monitor-info h4 {
+    font-size: 1rem;
+  }
+  
+  .monitor-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+  
+  .stat-item {
+    padding: 0.625rem;
+  }
+  
+  .monitor-actions .btn {
+    flex: 1 1 100%;
+    padding: 0.5rem;
+  }
+  
+  .group-header h2 {
+    font-size: 1.25rem;
+  }
+  
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: 1rem;
   }
 }
 </style>

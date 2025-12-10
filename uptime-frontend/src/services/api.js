@@ -85,7 +85,8 @@ export default {
   // Monitor checks
   monitorChecks: {
     getAll: (params = {}) => api.get('/monitor-checks', { params }),
-    getById: (id) => api.get(`/monitor-checks/${id}`)
+    getById: (id) => api.get(`/monitor-checks/${id}`),
+    deleteByMonitor: (monitorId) => api.delete(`/monitors/${monitorId}/checks`)
   },
 
   // Incidents

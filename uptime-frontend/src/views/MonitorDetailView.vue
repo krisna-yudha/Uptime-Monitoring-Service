@@ -55,9 +55,9 @@
         <button 
           @click="toggleMonitor" 
           class="btn"
-          :class="monitor?.enabled ? 'btn-warning' : 'btn-success'"
+          :class="isPaused ? 'btn-success' : 'btn-warning'"
         >
-          {{ monitor?.enabled ? '⏸️ Pause' : '▶️ Resume' }}
+          {{ isPaused ? '▶️ Resume' : '⏸️ Pause' }}
         </button>
         <router-link :to="`/logs/monitor/${$route.params.id}`" class="btn btn-info">
           📋 View Logs
@@ -303,18 +303,22 @@ const paginatedStatusHistory = computed(() => {
 const statsData = computed(() => {
   if (!monitor.value) return []
   
+  // Get latest response time from last check
+  const latestCheck = monitor.value?.checks?.[0]
+  const currentLatency = latestCheck?.latency_ms || null
+  
   return [
     {
       key: 'response',
       header: 'Response',
       subheader: '(Current)',
-      value: monitor.value?.last_response_time ? `${monitor.value.last_response_time} ms` : 'N/A',
+      value: currentLatency ? `${currentLatency} ms` : 'N/A',
       valueClass: 'response-value',
       loading: false,
-      trend: monitor.value?.last_response_time ? {
-        direction: monitor.value.last_response_time < 200 ? 'up' : 'down',
-        icon: monitor.value.last_response_time < 200 ? '↗' : '↘',
-        text: monitor.value.last_response_time < 200 ? 'Fast' : 'Slow'
+      trend: currentLatency ? {
+        direction: currentLatency < 200 ? 'up' : 'down',
+        icon: currentLatency < 200 ? '↗' : '↘',
+        text: currentLatency < 200 ? 'Fast' : 'Slow'
       } : null
     },
     {
@@ -357,16 +361,18 @@ const statsData = computed(() => {
       key: 'cert_exp',
       header: 'Cert Exp.',
       subheader: '(SSL)',
-      value: monitor.value?.type === 'https' ? '47 days' : 'N/A',
+      value: getCertExpiryDisplay(),
       valueClass: 'cert-value',
       loading: false,
-      trend: monitor.value?.type === 'https' ? {
-        direction: 'down',
-        icon: '⏰',
-        text: 'Expires soon'
-      } : null
+      trend: getCertExpiryTrend()
     }
   ]
+})
+
+// Computed property to check if monitor is paused
+const isPaused = computed(() => {
+  if (!monitor.value || !monitor.value.pause_until) return false
+  return new Date(monitor.value.pause_until) > new Date()
 })
 
 // Lifecycle
@@ -394,19 +400,120 @@ watch(() => monitor.value, async (newVal) => {
   }
 }, { deep: false })
 
+// Helper functions for SSL certificate
+function getCertExpiryDisplay() {
+  console.log('🔍 getCertExpiryDisplay called for:', monitor.value?.name)
+  
+  if (!monitor.value) {
+    console.log('  → No monitor data')
+    return 'N/A'
+  }
+  
+  console.log('  → Monitor type:', monitor.value.type)
+  console.log('  → Is HTTPS?:', monitor.value.type === 'https')
+  
+  // Only show for HTTPS monitors
+  if (monitor.value.type !== 'https') {
+    console.log('  → Not HTTPS, returning N/A')
+    return 'N/A'
+  }
+  
+  console.log('  → SSL cert expiry raw:', monitor.value.ssl_cert_expiry)
+  console.log('  → SSL cert expiry type:', typeof monitor.value.ssl_cert_expiry)
+  console.log('  → SSL cert issuer:', monitor.value.ssl_cert_issuer)
+  
+  // Check if SSL certificate info is available
+  if (monitor.value.ssl_cert_expiry) {
+    const expiryDate = new Date(monitor.value.ssl_cert_expiry)
+    const now = new Date()
+    const daysRemaining = Math.floor((expiryDate - now) / (1000 * 60 * 60 * 24))
+    
+    console.log('  → Expiry date parsed:', expiryDate)
+    console.log('  → Current date:', now)
+    console.log('  → Days remaining:', daysRemaining)
+    
+    if (daysRemaining < 0) {
+      return 'Expired'
+    } else if (daysRemaining === 0) {
+      return 'Today'
+    } else if (daysRemaining === 1) {
+      return '1 day'
+    } else {
+      return `${daysRemaining} days`
+    }
+  }
+  
+  // SSL cert not checked yet
+  console.log('  → SSL cert expiry is NULL/undefined, returning Not Checked')
+  return 'Not Checked'
+}
+
+function getCertExpiryTrend() {
+  if (!monitor.value || monitor.value.type !== 'https') {
+    return null
+  }
+  
+  if (!monitor.value.ssl_cert_expiry) {
+    return {
+      direction: 'down',
+      icon: '⚠️',
+      text: 'No data'
+    }
+  }
+  
+  const expiryDate = new Date(monitor.value.ssl_cert_expiry)
+  const now = new Date()
+  const daysRemaining = Math.floor((expiryDate - now) / (1000 * 60 * 60 * 24))
+  
+  if (daysRemaining < 0) {
+    return {
+      direction: 'down',
+      icon: '❌',
+      text: 'Expired'
+    }
+  } else if (daysRemaining <= 7) {
+    return {
+      direction: 'down',
+      icon: '🔴',
+      text: 'Critical'
+    }
+  } else if (daysRemaining <= 30) {
+    return {
+      direction: 'down',
+      icon: '⚠️',
+      text: 'Expires soon'
+    }
+  } else {
+    return {
+      direction: 'up',
+      icon: '✓',
+      text: 'Valid'
+    }
+  }
+}
+
 // Methods
 async function fetchMonitorData() {
   loading.value = true
   error.value = null
   
   try {
-    const result = await monitorStore.fetchMonitor(route.params.id)
+    // Add cache buster to force fresh data
+    const cacheBuster = Date.now()
+    const result = await monitorStore.fetchMonitor(route.params.id, { _t: cacheBuster })
     
     if (result.success) {
       monitor.value = result.data
       
       console.log('✅ Monitor loaded:', monitor.value.name)
       console.log('⏱️ Monitor checks every:', monitor.value.interval_seconds, 'seconds')
+      console.log('📦 Full Monitor Data:', monitor.value)
+      console.log('🔐 SSL Certificate Data:', {
+        type: monitor.value.type,
+        ssl_cert_expiry: monitor.value.ssl_cert_expiry,
+        ssl_cert_issuer: monitor.value.ssl_cert_issuer,
+        ssl_checked_at: monitor.value.ssl_checked_at
+      })
       
       // Pastikan canvas siap
       await nextTick()
@@ -435,16 +542,20 @@ async function refreshMonitorData() {
     const result = await monitorStore.fetchMonitor(route.params.id)
     
     if (result.success) {
-      // Update only specific fields to avoid disrupting UI
+      // Update monitor data including checks for current response time
       monitor.value.last_status = result.data.last_status
       monitor.value.last_checked_at = result.data.last_checked_at
-      monitor.value.last_latency_ms = result.data.last_latency_ms
       monitor.value.uptime_percentage = result.data.uptime_percentage
+      
+      // Update checks array if available (for current response time)
+      if (result.data.checks && result.data.checks.length > 0) {
+        monitor.value.checks = result.data.checks
+      }
       
       console.log('🔄 Monitor data refreshed:', {
         status: result.data.last_status,
         checked_at: result.data.last_checked_at,
-        latency: result.data.last_latency_ms
+        current_latency: result.data.checks?.[0]?.latency_ms
       })
     }
   } catch (err) {
@@ -970,15 +1081,30 @@ async function toggleMonitor() {
   if (!monitor.value) return
   
   try {
-    if (monitor.value.enabled) {
-      await monitorStore.pauseMonitor(monitor.value.id, 60)
+    if (isPaused.value) {
+      // Resume monitor
+      const result = await monitorStore.resumeMonitor(monitor.value.id)
+      if (result.success) {
+        console.log('✅ Monitor resumed successfully')
+      } else {
+        console.error('❌ Failed to resume monitor:', result.message)
+        alert('Failed to resume monitor: ' + result.message)
+      }
     } else {
-      await monitorStore.updateMonitor(monitor.value.id, { enabled: true })
+      // Pause monitor for 60 minutes
+      const result = await monitorStore.pauseMonitor(monitor.value.id, 60)
+      if (result.success) {
+        console.log('✅ Monitor paused successfully')
+      } else {
+        console.error('❌ Failed to pause monitor:', result.message)
+        alert('Failed to pause monitor: ' + result.message)
+      }
     }
 
     await fetchMonitorData()
   } catch (err) {
     console.error('Error toggling monitor:', err)
+    alert('Error toggling monitor: ' + err.message)
   }
 }
 
@@ -1033,10 +1159,26 @@ function getVisitTooltip(monitor) {
   return `Visit ${monitor.target}`
 }
 
-function clearData() {
-  if (confirm('Are you sure you want to clear all monitoring data for this service?')) {
-    // API call to clear monitoring data
-    console.log('Clearing data...')
+async function clearData() {
+  if (!monitor.value) return
+  
+  if (confirm('Are you sure you want to clear status history for this monitor?')) {
+    try {
+      console.log('🗑️ Clearing status history for monitor:', monitor.value.id)
+      
+      // Clear local status history data
+      allStatusHistory.value = []
+      totalItems.value = 0
+      currentPage.value = 1
+      
+      console.log('✅ Status history cleared successfully')
+      
+      // Show success message
+      alert('Status history cleared successfully. The history will rebuild as new checks are performed.')
+    } catch (err) {
+      console.error('❌ Error clearing status history:', err)
+      alert('Error clearing status history. Please try again.')
+    }
   }
 }
 
@@ -1284,13 +1426,17 @@ function formatDateTime(dateString) {
   background: linear-gradient(135deg, rgba(45, 52, 54, 0.95) 0%, rgba(99, 110, 114, 0.85) 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
-  padding: 16px;
+  padding: 20px;
   text-align: center;
   border-left: 4px solid #00b894;
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 160px;
 }
 
 .stat-card:hover {
@@ -1299,21 +1445,25 @@ function formatDateTime(dateString) {
 }
 
 .stat-header {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: #b2bec3;
-  margin-bottom: 5px;
-  font-weight: 500;
+  margin-bottom: 4px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 .stat-subheader {
-  font-size: 0.8rem;
+  font-size: 1.48rem;
   color: #636e72;
-  margin-bottom: 10px;
-}
-
+  margin-bottom: 12px;
 .stat-value {
-  font-size: 1.8rem;
-  font-weight: bold;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 8px 0;
+  line-height: 1.2;
+} font-weight: bold;
   color: #ffffff;
 }
 
@@ -1339,14 +1489,16 @@ function formatDateTime(dateString) {
 
 .stat-loading {
   animation: pulse 1.5s infinite;
-}
-
 .stat-trend {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  margin-top: 8px;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+} margin-top: 8px;
   font-size: 0.8rem;
 }
 

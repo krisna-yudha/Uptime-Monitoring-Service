@@ -928,22 +928,179 @@ async function handleSubmit() {
   margin-bottom: 10px;
 }
 
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .progress-indicator {
+    padding: 1rem;
+  }
+  
+  .step-label {
+    font-size: 0.875rem;
+  }
+}
+
 @media (max-width: 768px) {
+  .create-monitor {
+    padding: 1rem;
+    padding-top: 5rem;
+  }
+  
+  .page-header {
+    padding: 1.25rem;
+  }
+  
+  .header-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  
+  .header-main {
+    text-align: center;
+  }
+  
+  .header-main h1 {
+    font-size: 1.5rem;
+  }
+  
+  .header-main p {
+    font-size: 0.9rem;
+  }
+  
+  .header-actions {
+    width: 100%;
+  }
+  
+  .header-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .progress-indicator {
+    flex-direction: column;
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+  
+  .progress-step {
+    width: 100%;
+  }
+  
+  .progress-line {
+    display: none;
+  }
+  
+  .form-container {
+    padding: 1.25rem;
+  }
+  
   .form-row {
     grid-template-columns: 1fr;
   }
   
+  .form-section h3 {
+    font-size: 1.125rem;
+  }
+  
   .form-actions {
     flex-direction: column-reverse;
+    gap: 0.75rem;
+  }
+  
+  .form-actions .btn {
+    width: 100%;
   }
   
   .group-type-options {
     flex-direction: column;
-    gap: 10px;
+    gap: 0.75rem;
   }
   
   .group-stats-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+  
+  .channel-option {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .create-monitor {
+    padding: 0.75rem;
+  }
+  
+  .page-header {
+    padding: 1rem;
+  }
+  
+  .header-main h1 {
+    font-size: 1.25rem;
+  }
+  
+  .progress-indicator {
+    padding: 0.75rem;
+  }
+  
+  .step-number {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.875rem;
+  }
+  
+  .step-label {
+    font-size: 0.75rem;
+  }
+  
+  .form-container {
+    padding: 1rem;
+  }
+  
+  .form-section {
+    margin-bottom: 1.5rem;
+  }
+  
+  .form-section h3 {
+    font-size: 1rem;
+  }
+  
+  .form-group {
+    margin-bottom: 0.875rem;
+  }
+  
+  .form-label {
+    font-size: 0.875rem;
+  }
+  
+  .form-control {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+  }
+  
+  .group-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .group-stat {
+    padding: 0.75rem;
+  }
+  
+  .channel-option {
+    padding: 0.875rem;
+  }
+  
+  .channel-header {
+    flex-wrap: wrap;
+  }
+  
+  .channel-name {
+    font-size: 0.9rem;
+  }
+  
+  .error-message {
+    padding: 0.875rem;
+    font-size: 0.875rem;
   }
 }
 

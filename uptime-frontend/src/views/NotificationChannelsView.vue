@@ -973,32 +973,172 @@ function maskUrl(url) {
   cursor: pointer;
 }
 
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .channels-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .notification-channels {
-    padding: 10px;
+    padding: 1rem;
+    padding-top: 5rem;
   }
   
   .page-header {
+    padding: 1.25rem;
     flex-direction: column;
-    gap: 15px;
+    gap: 1rem;
     align-items: stretch;
   }
   
+  .page-header h1 {
+    text-align: center;
+    margin-bottom: 0;
+  }
+  
+  .page-header .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .channel-form-container {
+    padding: 1rem;
+  }
+  
   .channel-form {
-    padding: 20px;
+    padding: 1.25rem;
+  }
+  
+  .channel-form h2 {
+    font-size: 1.25rem;
   }
   
   .channels-grid {
     grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .channel-card {
+    padding: 1.25rem;
+  }
+  
+  .channel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
   }
   
   .form-actions {
-    flex-direction: column;
-    gap: 10px;
+    flex-direction: column-reverse;
+    gap: 0.75rem;
+  }
+  
+  .form-actions .btn {
+    width: 100%;
   }
   
   .channel-actions {
-    justify-content: stretch;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .channel-actions .btn {
+    width: 100%;
+  }
+  
+  .telegram-help,
+  .discord-help,
+  .slack-help,
+  .webhook-help {
+    padding: 1rem;
+  }
+  
+  .telegram-help ol,
+  .discord-help ol,
+  .slack-help ol {
+    padding-left: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .notification-channels {
+    padding: 0.75rem;
+  }
+  
+  .page-header {
+    padding: 1rem;
+  }
+  
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+  
+  .channel-form-container {
+    padding: 0.75rem;
+  }
+  
+  .channel-form {
+    padding: 1rem;
+  }
+  
+  .channel-form h2 {
+    font-size: 1.125rem;
+  }
+  
+  .form-section h3 {
+    font-size: 1rem;
+  }
+  
+  .form-group {
+    margin-bottom: 0.875rem;
+  }
+  
+  .form-control {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  
+  .channel-card {
+    padding: 1rem;
+  }
+  
+  .channel-title {
+    font-size: 1rem;
+  }
+  
+  .channel-type {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+  }
+  
+  .channel-details {
+    font-size: 0.8rem;
+  }
+  
+  .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+  
+  .btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+  }
+  
+  .telegram-help h4,
+  .discord-help h4,
+  .slack-help h4 {
+    font-size: 0.95rem;
+  }
+  
+  .telegram-help,
+  .discord-help,
+  .slack-help,
+  .webhook-help {
+    padding: 0.875rem;
+    font-size: 0.85rem;
   }
 }
 </style>

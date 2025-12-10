@@ -46,15 +46,25 @@ export const useMonitorStore = defineStore('monitors', () => {
     }
   }
 
-  async function fetchMonitor(id) {
+  async function fetchMonitor(id, params = {}) {
     loading.value = true
     error.value = null
     
     try {
-      const response = await api.monitors.getById(id)
+      const response = await api.monitors.getById(id, { params })
+      
+      console.log('🌐 API Response for monitor', id, ':', response.data)
       
       if (response.data.success) {
         currentMonitor.value = response.data.data
+        
+        console.log('📦 Monitor data stored:', {
+          name: response.data.data.name,
+          type: response.data.data.type,
+          ssl_cert_expiry: response.data.data.ssl_cert_expiry,
+          ssl_cert_issuer: response.data.data.ssl_cert_issuer
+        })
+        
         return { success: true, data: response.data.data }
       }
     } catch (err) {

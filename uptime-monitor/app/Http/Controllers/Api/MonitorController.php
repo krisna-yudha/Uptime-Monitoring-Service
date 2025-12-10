@@ -103,6 +103,10 @@ class MonitorController extends Controller
         $monitor = Monitor::create($data);
         $monitor->load('creator:id,name,email');
 
+        // Dispatch initial monitor check immediately
+        // This will check status and SSL certificate (if HTTPS) right away
+        \App\Jobs\ProcessMonitorCheck::dispatch($monitor);
+
         return response()->json([
             'success' => true,
             'message' => 'Monitor created successfully',

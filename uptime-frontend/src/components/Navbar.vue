@@ -1,6 +1,11 @@
 <template>
-  <nav class="navbar" :class="{ 'navbar-collapsed': isCollapsed }">
-    <!-- Toggle Button -->
+  <nav class="navbar" :class="{ 'navbar-collapsed': isCollapsed, 'navbar-mobile-open': isMobileMenuOpen }">
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" @click="toggleMobileMenu">
+      <i class="fas" :class="isMobileMenuOpen ? 'fa-times' : 'fa-bars'"></i>
+    </button>
+    
+    <!-- Desktop Toggle Button -->
     <button class="navbar-toggle" @click="toggleSidebar">
       <i class="fas" :class="isCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'"></i>
     </button>
@@ -17,28 +22,28 @@
     
     <ul class="navbar-nav">
       <li class="nav-item">
-        <router-link to="/dashboard" class="nav-link" active-class="active" :title="isCollapsed ? 'Dashboard' : ''">
+        <router-link to="/dashboard" class="nav-link" active-class="active" :title="isCollapsed ? 'Dashboard' : ''" @click="closeMobileMenu">
           <span class="nav-icon">📊</span>
           <span class="nav-text" v-show="!isCollapsed">Dashboard</span>
           <div class="nav-indicator"></div>
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/monitors" class="nav-link" active-class="active" :title="isCollapsed ? 'Monitors' : ''">
-          <span class="nav-icon">🖥️</span>
+        <router-link to="/monitors" class="nav-link" active-class="active" :title="isCollapsed ? 'Monitors' : ''" @click="closeMobileMenu">
+          <span class="nav-icon">💻</span>
           <span class="nav-text" v-show="!isCollapsed">Monitors</span>
           <div class="nav-indicator"></div>
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/notifications" class="nav-link" active-class="active" :title="isCollapsed ? 'Notifications' : ''">
+        <router-link to="/notifications" class="nav-link" active-class="active" :title="isCollapsed ? 'Notifications' : ''" @click="closeMobileMenu">
           <span class="nav-icon">🔔</span>
           <span class="nav-text" v-show="!isCollapsed">Notifications</span>
           <div class="nav-indicator"></div>
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/incidents" class="nav-link" active-class="active" :title="isCollapsed ? 'Incidents' : ''">
+        <router-link to="/incidents" class="nav-link" active-class="active" :title="isCollapsed ? 'Incidents' : ''" @click="closeMobileMenu">
           <span class="nav-icon">🚨</span>
           <span class="nav-text" v-show="!isCollapsed">Incidents</span>
           <div class="nav-indicator"></div>
@@ -67,16 +72,20 @@
       </button>
     </div>
   </nav>
+  
+  <!-- Mobile Overlay -->
+  <div class="mobile-overlay" v-if="isMobileMenuOpen" @click="closeMobileMenu"></div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useRouter } from 'vue-router'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const isCollapsed = ref(false)
+const isMobileMenuOpen = ref(false)
 
 function toggleSidebar() {
   isCollapsed.value = !isCollapsed.value
@@ -84,6 +93,21 @@ function toggleSidebar() {
   document.dispatchEvent(new CustomEvent('sidebar-toggled', { 
     detail: { isCollapsed: isCollapsed.value } 
   }))
+}
+
+function toggleMobileMenu() {
+  isMobileMenuOpen.value = !isMobileMenuOpen.value
+  // Prevent body scroll when menu is open
+  if (isMobileMenuOpen.value) {
+    document.body.style.overflow = 'hidden'
+  } else {
+    document.body.style.overflow = ''
+  }
+}
+
+function closeMobileMenu() {
+  isMobileMenuOpen.value = false
+  document.body.style.overflow = ''
 }
 
 function getInitials(name) {
@@ -96,9 +120,26 @@ function getInitials(name) {
 }
 
 async function handleLogout() {
+  closeMobileMenu()
   await authStore.logout()
   router.push('/login')
 }
+
+// Close mobile menu on window resize
+function handleResize() {
+  if (window.innerWidth > 768 && isMobileMenuOpen.value) {
+    closeMobileMenu()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  document.body.style.overflow = ''
+})
 </script>
 
 <style scoped>
@@ -140,6 +181,15 @@ async function handleLogout() {
   transition: all 0.3s ease;
   box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
   z-index: 1001;
+}
+
+/* Mobile menu toggle - hidden on desktop */
+.mobile-menu-toggle {
+  display: none;
+}
+
+.mobile-overlay {
+  display: none;
 }
 
 .navbar-toggle:hover {
@@ -418,16 +468,111 @@ async function handleLogout() {
 /* Mobile responsive */
 @media (max-width: 768px) {
   .navbar {
-    width: 100%;
-    height: auto;
-    position: relative;
+    width: 280px;
+    height: 100vh;
+    position: fixed;
+    left: -280px;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2000;
+  }
+  
+  .navbar-mobile-open {
+    left: 0;
   }
   
   .navbar-collapsed {
-    width: 100%;
+    width: 280px;
+    left: -280px;
   }
   
+  .navbar-mobile-open.navbar-collapsed {
+    left: 0;
+  }
+  
+  /* Show mobile menu toggle */
+  .mobile-menu-toggle {
+    display: flex;
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    width: 3rem;
+    height: 3rem;
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    border: none;
+    border-radius: 0.5rem;
+    color: white;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1999;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+  }
+  
+  .mobile-menu-toggle:hover {
+    background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+    transform: scale(1.05);
+  }
+  
+  .mobile-menu-toggle i {
+    font-size: 1.25rem;
+  }
+  
+  /* Hide desktop toggle */
   .navbar-toggle {
+    display: none;
+  }
+  
+  /* Mobile overlay */
+  .mobile-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1998;
+    animation: fadeIn 0.3s ease;
+  }
+  
+  /* Reset navbar text visibility on mobile */
+  .navbar-mobile-open .nav-text,
+  .navbar-mobile-open .brand-text,
+  .navbar-mobile-open .user-info {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  
+  .navbar-mobile-open .user-info-collapsed {
+    display: none;
+  }
+  
+  .navbar-mobile-open .user-info {
+    display: flex;
+  }
+  
+  .navbar-brand {
+    padding: 1.25rem;
+    min-height: 70px;
+  }
+  
+  .brand-text h2 {
+    font-size: 1.25rem;
+  }
+  
+  .brand-subtitle {
+    font-size: 0.8rem;
+  }
+}
+
+/* Desktop - hide mobile elements */
+@media (min-width: 769px) {
+  .mobile-menu-toggle {
+    display: none;
+  }
+  
+  .mobile-overlay {
     display: none;
   }
 }

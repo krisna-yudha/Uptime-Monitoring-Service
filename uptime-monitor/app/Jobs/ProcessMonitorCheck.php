@@ -584,7 +584,17 @@ class ProcessMonitorCheck implements ShouldQueue
                 $certInfo = openssl_x509_parse($cert);
                 fclose($socket);
 
-                return date('Y-m-d H:i:s', $certInfo['validTo_time_t']);
+                $expiryDate = date('Y-m-d H:i:s', $certInfo['validTo_time_t']);
+                $issuer = $certInfo['issuer']['O'] ?? ($certInfo['issuer']['CN'] ?? 'Unknown');
+
+                // Update monitor SSL info
+                $this->monitor->update([
+                    'ssl_cert_expiry' => $expiryDate,
+                    'ssl_cert_issuer' => $issuer,
+                    'ssl_checked_at' => now()
+                ]);
+
+                return $expiryDate;
             }
         } catch (Exception $e) {
             Log::warning("Failed to get SSL expiry date for $url: " . $e->getMessage());

@@ -912,50 +912,136 @@ function quickLogin(email, password) {
 }
 
 /* Responsive design */
-@media (max-width: 480px) {
+@media (max-width: 1024px) {
+  .login-content {
+    max-width: 500px;
+  }
+}
+
+@media (max-width: 768px) {
   .login-container {
-    padding: 15px;
+    padding: 1rem;
   }
   
   .login-content {
     max-width: 100%;
   }
   
+  .login-card {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  
   .login-header {
-    padding: 30px 20px 20px 20px;
+    padding: 2rem 1.5rem 1.5rem 1.5rem;
   }
   
   .login-body {
-    padding: 0 20px 15px 20px;
+    padding: 0 1.5rem 1.25rem 1.5rem;
   }
   
   .login-footer {
-    padding: 15px 20px 25px 20px;
+    padding: 1.25rem 1.5rem 2rem 1.5rem;
   }
   
   .login-header h1 {
-    font-size: 1.7rem;
+    font-size: 1.875rem;
+  }
+  
+  .subtitle-wrapper p {
+    font-size: 0.9rem;
+  }
+  
+  .logo-icon {
+    width: 70px;
+    height: 70px;
+  }
+  
+  .logo-icon i {
+    font-size: 1.75rem;
+  }
+  
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+  
+  .account-item {
+    padding: 0.875rem;
+  }
+  
+  .test-accounts {
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-container {
+    padding: 0.75rem;
+  }
+  
+  .login-header {
+    padding: 1.5rem 1.25rem 1.25rem 1.25rem;
+  }
+  
+  .login-body {
+    padding: 0 1.25rem 1rem 1.25rem;
+  }
+  
+  .login-footer {
+    padding: 1rem 1.25rem 1.5rem 1.25rem;
+  }
+  
+  .login-header h1 {
+    font-size: 1.5rem;
+  }
+  
+  .subtitle-wrapper p {
+    font-size: 0.8rem;
   }
   
   .logo-icon {
     width: 60px;
     height: 60px;
-    margin-bottom: 15px;
+    margin-bottom: 1rem;
   }
   
   .logo-icon i {
     font-size: 1.5rem;
   }
   
+  .form-label {
+    font-size: 0.875rem;
+  }
+  
+  .form-control {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+  }
+  
+  .btn-primary {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.95rem;
+  }
+  
   .account-item {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 0.5rem;
     text-align: left;
+    padding: 0.75rem;
+  }
+  
+  .account-role {
+    font-size: 0.85rem;
   }
   
   .account-credentials {
     word-break: break-all;
+    font-size: 0.75rem;
+  }
+  
+  .divider span {
+    font-size: 0.8rem;
+    padding: 0 0.75rem;
   }
 }
 </style>
