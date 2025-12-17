@@ -8,14 +8,14 @@ $app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
 echo "🔧 Fixing Monitor Configuration Issues\n";
 echo "=========================================\n\n";
 
-$monitor = App\Models\Monitor::find(5);
+$monitor = App\Models\Monitor::find(25);
 
 if (!$monitor) {
     echo "❌ Monitor #5 not found\n";
     exit(1);
 }
 
-echo "Monitor: {$monitor->name}\n";
+echo "Monitor: {$monitor->name} (ID: {$monitor->id})\n";
 echo "Current Type: {$monitor->type}\n";
 echo "Current Target: {$monitor->target}\n\n";
 
@@ -48,10 +48,13 @@ if ($monitor->type === 'https' && $urlScheme === 'http') {
     echo "Triggering manual SSL check...\n\n";
     
     // Dispatch job to check this monitor
-    App\Jobs\ProcessMonitorCheck::dispatch($monitor);
+    // Gunakan queue yang sama dengan worker monitor-checks
+    App\Jobs\ProcessMonitorCheck::dispatch($monitor)->onQueue('monitor-checks');
     
     echo "✅ Monitor check job dispatched\n";
     echo "Run: php artisan queue:work --queue=monitor-checks --once\n";
+} else {
+    echo "\nℹ️  No action taken. Conditions not met.\n";
 }
 
 echo "\n";

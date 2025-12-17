@@ -7,7 +7,6 @@
         <div class="filter-group">
           <select v-model="statusFilter" class="form-control">
             <option value="">All Statuses</option>
-            <option value="open">Open</option>
             <option value="pending">Pending (Ditangani)</option>
             <option value="resolved">Resolved (Selesai)</option>
           </select>
@@ -25,6 +24,23 @@
             </option>
           </select>
         </div> -->
+
+        <!-- <div class="filter-group view-toggle">
+          <button
+            :class="['btn', viewMode === 'card' ? 'btn-secondary' : 'btn-primary']"
+            @click="viewMode = 'list'"
+            title="Tampilan daftar"
+          >
+            List
+          </button>
+          <button
+            :class="['btn', viewMode === 'card' ? 'btn-primary' : 'btn-secondary']"
+            @click="viewMode = 'card'"
+            title="Tampilan kartu"
+          >
+            Card
+          </button>
+        </div> -->
       </div>
     </div>
 
@@ -41,157 +57,76 @@
       <p>{{ statusFilter ? 'No incidents match your current filters.' : 'Great! No incidents have been recorded yet.' }}</p>
     </div>
     
-    <div v-else class="incidents-list">
-      <div
-        v-for="incident in filteredIncidents"
-        :key="incident.id"
-        class="incident-card"
-        :class="`incident-${incident.status || 'open'}`"
-      >
-        <div class="incident-header">
-          <div class="incident-info">
-            <h3 class="incident-title">
-              <router-link :to="`/monitors/${incident.monitor_id}`">
-                {{ incident.monitor_name }}
-              </router-link>
-            </h3>
-            <div class="incident-meta">
-              <span 
-                class="status-badge"
-                :class="`status-${incident.status || 'open'}`"
-              >
-                {{ getStatusLabel(incident.status || 'open') }}
-              </span>
-              <span class="incident-duration">
-                {{ getIncidentDuration(incident) }}
-              </span>
-            </div>
-          </div>
-          
-          <div class="incident-actions">
-            <button
-              v-if="incident.status === 'open' || !incident.status"
-              @click="markAsPending(incident.id)"
-              class="btn btn-warning btn-sm"
-            >
-              Tandai Ditangani
-            </button>
-            
-            <button
-              v-if="incident.status !== 'resolved'"
-              @click="markAsSolved(incident.id)"
-              class="btn btn-success btn-sm"
-            >
-              Tandai Selesai
-            </button>
-            
-            <button
-              v-if="incident.status === 'resolved'"
-              @click="reopenIncident(incident.id)"
-              class="btn btn-warning btn-sm"
-            >
-              Buka Kembali
-            </button>
-          </div>
+    <div v-else>
+      <div class="list-wrapper">
+        <div class="list-header">
+          <div class="col name">Name</div>
+          <div class="col status">Status</div>
+          <div class="col datetime">Date Time</div>
+          <div class="col message">Message</div>
+          <div class="col actions">Actions</div>
         </div>
         
-        <div class="incident-details">
-          <div class="incident-timeline">
-            <div class="timeline-item">
-              <div class="timeline-badge timeline-start">
-                <i class="icon-alert"></i>
+          <!-- Action Modal: input message before acknowledging/resolving -->
+          <div v-if="showActionModal" class="modal-overlay" @click.self="showActionModal = false">
+            <div class="modal">
+              <div class="modal-header">
+                <h3>{{ actionType === 'pending' ? 'Tandai: Ditangani' : 'Tandai: Selesai' }}</h3>
+                <button class="btn btn-secondary" @click="showActionModal = false">✖</button>
               </div>
-              <div class="timeline-content">
-                <div class="timeline-time">{{ formatDate(incident.started_at) }}</div>
-                <div class="timeline-text">
-                  <strong>Incident started</strong>
-                  <div v-if="incident.error_message" class="error-message">
-                    {{ incident.error_message }}
-                  </div>
-                </div>
+              <div class="modal-body">
+                <label class="form-label">Pesan (opsional)</label>
+                <textarea v-model="actionMessage" rows="4" class="form-control" placeholder="Tambahkan pesan atau catatan..."></textarea>
               </div>
-            </div>
-            
-            <div v-if="incident.acknowledged_at" class="timeline-item">
-              <div class="timeline-badge timeline-acknowledged">
-                <i class="icon-check"></i>
-              </div>
-              <div class="timeline-content">
-                <div class="timeline-time">{{ formatDate(incident.acknowledged_at) }}</div>
-                <div class="timeline-text">
-                  <strong>Acknowledged</strong>
-                  <span v-if="incident.acknowledged_by">by {{ incident.acknowledged_by }}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div v-if="incident.resolved_at" class="timeline-item">
-              <div class="timeline-badge timeline-resolved">
-                <i class="icon-check-circle"></i>
-              </div>
-              <div class="timeline-content">
-                <div class="timeline-time">{{ formatDate(incident.resolved_at) }}</div>
-                <div class="timeline-text">
-                  <strong>Resolved</strong>
-                  <span v-if="incident.resolved_by">by {{ incident.resolved_by }}</span>
-                </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" @click="showActionModal = false">Batal</button>
+                <button class="btn btn-primary" :disabled="actionLoading" @click="confirmAction">
+                  {{ actionLoading ? 'Mengirim...' : (actionType === 'pending' ? 'Tandai Ditangani' : 'Tandai Selesai') }}
+                </button>
               </div>
             </div>
           </div>
-          
-          <div v-if="incident.notes && incident.notes.length > 0" class="incident-notes">
-            <h4>Notes</h4>
-            <div
-              v-for="note in incident.notes"
-              :key="note.id"
-              class="incident-note"
-            >
-              <div class="note-header">
-                <strong>{{ note.created_by || 'System' }}</strong>
-                <span class="note-time">{{ formatDate(note.created_at) }}</span>
+
+        <ul class="incidents-list view-list">
+          <li
+            v-for="incident in filteredIncidents"
+            :key="incident.id"
+            class="incident-card"
+            :class="`incident-${incident.status || 'open'}`"
+          >
+            <div class="list-row">
+              <div class="col name">
+                <router-link :to="`/monitors/${incident.monitor_id}`">{{ incident.monitor_name }}</router-link>
               </div>
-              <div class="note-content">{{ note.content }}</div>
+              <div class="col status">
+                <span class="status-badge" :class="`status-${incident.status || 'open'}`">{{ getStatusLabel(incident.status || 'open') }}</span>
+              </div>
+              <div class="col datetime">{{ formatDate(incident.started_at || incident.last_check_at || new Date()) }}</div>
+              <div class="col message">{{ getIncidentMessage(incident) }}</div>
+              <div class="col actions">
+                <button
+                  class="btn btn-warning btn-sm"
+                  :disabled="incident.status === 'pending' || incident.status === 'resolved'"
+                  @click="openActionModal('pending', incident.id)"
+                >
+                  Ditangani
+                </button>
+
+                <button
+                  class="btn btn-success btn-sm"
+                  :disabled="incident.status === 'resolved'"
+                  @click="openActionModal('resolved', incident.id)"
+                >
+                  Selesai
+                </button>
+              </div>
             </div>
-          </div>
-          
-          <!-- Add Note Form -->
-          <div v-if="incident.status !== 'resolved'" class="add-note-form">
-            <textarea
-              v-model="newNotes[incident.id]"
-              placeholder="Add a note about this incident..."
-              class="form-control"
-              rows="2"
-            ></textarea>
-            <button
-              @click="addNote(incident.id)"
-              :disabled="!newNotes[incident.id]?.trim()"
-              class="btn btn-primary btn-sm"
-            >
-              Add Note
-            </button>
-          </div>
-        </div>
-        
-        <!-- Incident Stats -->
-        <div class="incident-stats">
-          <div class="stat-item">
-            <span class="stat-label">Check Failures:</span>
-            <span class="stat-value">{{ incident.failure_count || 0 }}</span>
-          </div>
-          
-          <div v-if="incident.last_check_at" class="stat-item">
-            <span class="stat-label">Last Check:</span>
-            <span class="stat-value">{{ formatDate(incident.last_check_at) }}</span>
-          </div>
-          
-          <div v-if="incident.expected_recovery_at" class="stat-item">
-            <span class="stat-label">Expected Recovery:</span>
-            <span class="stat-value">{{ formatDate(incident.expected_recovery_at) }}</span>
-          </div>
-        </div>
+          </li>
+        </ul>
       </div>
     </div>
 
+    <!-- Pagination -->
     <!-- Pagination -->
     <div v-if="pagination.total > pagination.per_page" class="pagination">
       <button
@@ -201,7 +136,19 @@
       >
         Previous
       </button>
-      
+
+      <div class="pagination-pages">
+        <button
+          v-for="p in pagesList"
+          :key="p"
+          class="btn btn-secondary btn-sm"
+          :class="{ 'active-page': p === pagination.current_page }"
+          @click="gotoPage(p)"
+        >
+          {{ p }}
+        </button>
+      </div>
+
       <span class="pagination-info">
         Page {{ pagination.current_page }} of {{ pagination.last_page }}
         ({{ pagination.total }} total incidents)
@@ -214,6 +161,15 @@
       >
         Next
       </button>
+
+      <div class="pagination-select">
+        <label>Per page:</label>
+        <select v-model.number="pagination.per_page" @change="changePerPage" class="form-control">
+          <option :value="10">10</option>
+          <option :value="20">20</option>
+          <option :value="50">50</option>
+        </select>
+      </div>
     </div>
   </div>
 </template>
@@ -232,12 +188,27 @@ const statusFilter = ref('')
 const monitorFilter = ref('')
 const newNotes = ref({})
 const serverError = ref(false)
+const viewMode = ref('list')
 
 const pagination = ref({
   current_page: 1,
   last_page: 1,
-  per_page: 20,
+  per_page: 10,
   total: 0
+})
+
+// Action modal state for handling messages when acknowledging/resolving
+const showActionModal = ref(false)
+const actionType = ref('') // 'pending' or 'resolved'
+const actionIncidentId = ref(null)
+const actionMessage = ref('')
+const actionLoading = ref(false)
+
+const pagesList = computed(() => {
+  const last = pagination.value.last_page || 1
+  const arr = []
+  for (let i = 1; i <= last; i++) arr.push(i)
+  return arr
 })
 
 const filteredIncidents = computed(() => {
@@ -329,55 +300,63 @@ async function fetchMonitors() {
 }
 
 async function markAsPending(incidentId) {
-  if (!confirm('Apakah Anda yakin ingin menandai incident ini sebagai sedang ditangani?')) {
-    return
-  }
-  
-  try {
-    const response = await api.incidents.acknowledge(incidentId)
-    
-    if (response.data && response.data.success) {
-      await fetchIncidents()
-    } else {
-      alert(response.data?.message || 'Gagal menandai incident sebagai pending')
-    }
-  } catch (err) {
-    console.error('Failed to mark incident as pending:', err)
-    
-    if (err.response?.status === 404) {
-      alert('Endpoint tidak ditemukan. Pastikan Laravel server berjalan')
-    } else if (err.response?.status === 401) {
-      alert('Sesi login expired. Silakan login kembali.')
-    } else if (err.code === 'ERR_NETWORK') {
-      alert('Server tidak dapat dijangkau. Pastikan Laravel server berjalan di http://localhost:8000')
-    } else {
-      alert(`Terjadi kesalahan: ${err.response?.data?.message || err.message}`)
-    }
-  }
+  // Open modal to collect optional message instead of immediately acting
+  openActionModal('pending', incidentId)
 }
 
 async function markAsSolved(incidentId) {
-  if (!confirm('Apakah Anda yakin ingin menandai incident ini sebagai selesai?')) {
-    return
-  }
-  
+  // Open modal to collect optional message instead of immediately acting
+  openActionModal('resolved', incidentId)
+}
+
+function openActionModal(type, incidentId) {
+  actionType.value = type
+  actionIncidentId.value = incidentId
+  actionMessage.value = ''
+  showActionModal.value = true
+}
+
+async function confirmAction() {
+  if (!actionIncidentId.value || !actionType.value) return
+  actionLoading.value = true
+
   try {
-    const response = await api.incidents.resolve(incidentId)
-    
-    if (response.data && response.data.success) {
+    console.log('confirmAction payload', { incidentId: actionIncidentId.value, type: actionType.value, note: actionMessage.value })
+    let response
+    if (actionType.value === 'pending') {
+      response = await api.incidents.acknowledge(actionIncidentId.value, { note: actionMessage.value })
+    } else if (actionType.value === 'resolved') {
+      response = await api.incidents.resolve(actionIncidentId.value, { note: actionMessage.value })
+    }
+    console.log('confirmAction response', response)
+
+    if (response?.data && response.data.success) {
+      showActionModal.value = false
       await fetchIncidents()
     } else {
-      alert(response.data?.message || 'Gagal menandai incident sebagai selesai')
+      alert(response?.data?.message || 'Gagal melakukan aksi pada incident')
     }
   } catch (err) {
-    console.error('Failed to mark incident as solved:', err)
-    
+    console.error('Action failed:', err)
     if (err.code === 'ERR_NETWORK') {
       alert('Server tidak dapat dijangkau. Pastikan Laravel server berjalan')
     } else {
       alert(`Terjadi kesalahan: ${err.response?.data?.message || err.message}`)
     }
+  } finally {
+    actionLoading.value = false
   }
+}
+
+function getIncidentMessage(incident) {
+  const logs = incident.alert_log || []
+  if (Array.isArray(logs) && logs.length) {
+    const last = logs[logs.length - 1]
+    // Backend stores notes inside the 'metadata' object
+    const meta = last.metadata || {}
+    return meta.note || meta.resolution_note || meta.note_content || last.message || incident.error_message || '-'
+  }
+  return incident.error_message || incident.message || '-'
 }
 
 async function reopenIncident(incidentId) {
@@ -445,6 +424,18 @@ function nextPage() {
   }
 }
 
+function gotoPage(n) {
+  const page = Number(n) || 1
+  if (page === pagination.value.current_page) return
+  pagination.value.current_page = page
+  fetchIncidents()
+}
+
+function changePerPage() {
+  pagination.value.current_page = 1
+  fetchIncidents()
+}
+
 function getIncidentDuration(incident) {
   const start = new Date(incident.started_at)
   const end = incident.resolved_at ? new Date(incident.resolved_at) : new Date()
@@ -495,7 +486,7 @@ async function retryConnection() {
 
 <style scoped>
 .incidents {
-  padding: 12px;
+  padding: 18px 28px;
 }
 
 .page-header {
@@ -523,19 +514,147 @@ async function retryConnection() {
 }
 
 .incidents-list {
+  display: block;
+  max-width: none;
+  margin: 0;
+  width: 100%;
+  padding: 0;
+  list-style: none;
+}
+
+.incidents-list.view-card {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 10px;
+  max-width: none;
+}
+
+/* List-mode (compact vertical list) */
+.incidents-list.view-list .incident-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  box-shadow: none;
+  border-left-width: 6px;
+  border-radius: 4px;
+  margin-bottom: 0;
+  border-bottom: 1px solid #e8eaed;
+  background: transparent;
+}
+
+/* List header and row layout */
+.list-wrapper {
+  max-width: none;
+  margin: 0;
+  padding: 0 8px;
+  width: 100%;
+}
+.list-header {
+  display: flex;
+  gap: 12px;
+  padding: 10px 16px;
+  font-weight: 700;
+  color: #445569;
+  border-bottom: 2px solid #edf2f4;
+  align-items: center;
+}
+.list-header .col,
+.list-row .col {
+  padding: 6px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.list-header .name { flex: 2 1 260px; }
+.list-header .status { flex: 0 0 120px; text-align: center }
+.list-header .datetime { flex: 0 0 220px; text-align: left }
+.list-header .message { flex: 1 1 260px }
+.list-header .actions { flex: 0 0 280px; text-align: right }
+
+.list-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+}
+.list-row .name { flex: 2 1 260px; }
+.list-row .status { flex: 0 0 120px; text-align: center }
+.list-row .datetime { flex: 0 0 220px; text-align: left; color: #6b7a86; font-size: 0.95em }
+.list-row .message { flex: 1 1 260px; color: #3b4a54 }
+.list-row .actions { 
+  flex: 0 0 280px; 
+  text-align: right; 
+  display: flex; 
+  gap: 12px; 
+  justify-content: flex-end; 
+  align-items: center;
+}
+
+.list-row .actions .btn { margin-left: 0 }
+.list-row .actions .btn-sm { padding: 6px 10px; min-width: 82px }
+.list-row a { color: #2c3e50; text-decoration: none }
+.list-row a:hover { color: #3498db }
+
+/* Small tweak to status badge for compact list */
+.incidents-list.view-list .status-badge { padding: 4px 8px; font-size: 0.75em }
+
+
+.incidents-list.view-list .incident-header {
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: none;
+  flex: 1;
+}
+
+.incidents-list.view-list .incident-card {
+  display: block;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  box-shadow: none;
+  border-left-width: 6px;
+  border-radius: 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid #eef1f3;
+  background: transparent;
+}
+
+.incidents-list.view-list .incident-card + .incident-card {
+  /* ensure consistent separation */
+  margin-top: 0;
+}
+
+
+/* Hide verbose sections in list mode for compactness */
+.incidents-list.view-list .incident-details,
+.incidents-list.view-list .incident-stats,
+.incidents-list.view-list .incident-notes,
+.incidents-list.view-list .add-note-form {
+  display: none;
 }
 
 .incident-card {
   background: white;
   border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   border-left: 3px solid #bdc3c7;
   overflow: hidden;
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  list-style: none;
+  padding: 0;
+}
+
+/* Card-mode overrides */
+.incidents-list.view-card .incident-card {
   display: flex;
   flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  margin-bottom: 0;
 }
 
 .incident-card.incident-open {
@@ -899,6 +1018,22 @@ async function retryConnection() {
   font-size: 0.9em;
 }
 
+.pagination-pages {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pagination-select {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: 12px;
+}
+.active-page {
+  background: #3498db;
+  color: white;
+}
+
 .form-control {
   width: 100%;
   padding: 8px 12px;
@@ -999,9 +1134,39 @@ async function retryConnection() {
     padding: 1rem;
     padding-top: 5rem;
   }
-  
   .incidents-list {
-    grid-template-columns: 1fr;
+    max-width: 100%;
+  }
+  .list-header { display: none }
+
+  /* Stack each row vertically and show key fields */
+  .incidents-list.view-list .incident-card {
+    display: block;
+    padding: 8px 12px;
+    border-bottom: 1px solid #eef1f3;
+    background: transparent;
+    border-radius: 0;
+    margin-bottom: 0;
+  }
+
+  .list-row { display: block }
+  .list-row .name { display: block; margin-bottom: 6px; font-weight: 700 }
+  .list-row .status { display: inline-block; margin-right: 8px }
+  .list-row .datetime { display: block; color: #7f8c8d; margin-top: 6px }
+  .list-row .message { display: block; margin-top: 6px; color: #34495e }
+  .list-row .actions { margin-top: 8px; display: flex; gap: 8px }
+
+  /* Button layout: keep natural width on desktop, expand on small screens */
+  .list-row .actions .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  /* Ensure action buttons have a sensible minimum width so labels fit */
+  .list-row .actions .btn-sm {
+    min-width: 120px;
+    padding: 6px 12px;
   }
   
   .page-header {

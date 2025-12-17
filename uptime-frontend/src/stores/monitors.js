@@ -10,6 +10,21 @@ export const useMonitorStore = defineStore('monitors', () => {
   const error = ref(null)
 
   // Actions
+  // Helper: normalize monitor shape (ensure latency_ms present on checks)
+  function normalizeMonitor(monitor) {
+    if (!monitor) return monitor
+    if (Array.isArray(monitor)) {
+      return monitor.map(normalizeMonitor)
+    }
+    if (monitor.checks && Array.isArray(monitor.checks)) {
+      monitor.checks = monitor.checks.map(c => ({
+        ...c,
+        latency_ms: c.latency_ms ?? c.latency ?? c.response_time ?? c.response_time_ms ?? null
+      }))
+    }
+    return monitor
+  }
+
   async function fetchMonitors(params = {}) {
     loading.value = true
     error.value = null
@@ -18,7 +33,8 @@ export const useMonitorStore = defineStore('monitors', () => {
       const response = await api.monitors.getAll(params)
       
       if (response.data.success) {
-        monitors.value = response.data.data.data || response.data.data
+        const payload = response.data.data.data || response.data.data
+        monitors.value = Array.isArray(payload) ? payload.map(normalizeMonitor) : payload
         return { success: true, data: response.data.data }
       }
     } catch (err) {
@@ -37,7 +53,8 @@ export const useMonitorStore = defineStore('monitors', () => {
       
       if (response.data.success) {
         // Update monitors state without changing loading state
-        monitors.value = response.data.data.data || response.data.data
+        const payload = response.data.data.data || response.data.data
+        monitors.value = Array.isArray(payload) ? payload.map(normalizeMonitor) : payload
         return { success: true, data: response.data.data }
       }
     } catch (err) {
@@ -51,12 +68,12 @@ export const useMonitorStore = defineStore('monitors', () => {
     error.value = null
     
     try {
-      const response = await api.monitors.getById(id, { params })
+      const response = await api.monitors.getById(id, params)
       
       console.log('🌐 API Response for monitor', id, ':', response.data)
       
       if (response.data.success) {
-        currentMonitor.value = response.data.data
+        currentMonitor.value = normalizeMonitor(response.data.data)
         
         console.log('📦 Monitor data stored:', {
           name: response.data.data.name,
@@ -84,9 +101,10 @@ export const useMonitorStore = defineStore('monitors', () => {
       const response = await api.monitors.create(monitorData)
       
       if (response.data.success) {
-        // Add to local state
-        monitors.value.unshift(response.data.data)
-        return { success: true, data: response.data.data }
+        // Normalize and add to local state
+        const created = normalizeMonitor(response.data.data)
+        monitors.value.unshift(created)
+        return { success: true, data: created }
       }
     } catch (err) {
       const message = err.response?.data?.message || 'Failed to create monitor'
@@ -105,18 +123,19 @@ export const useMonitorStore = defineStore('monitors', () => {
       const response = await api.monitors.update(id, monitorData)
       
       if (response.data.success) {
+        const updated = normalizeMonitor(response.data.data)
         // Update in local state
         const index = monitors.value.findIndex(m => m.id === id)
         if (index !== -1) {
-          monitors.value[index] = response.data.data
+          monitors.value[index] = updated
         }
         
         // Update current monitor if it's the same
         if (currentMonitor.value?.id === id) {
-          currentMonitor.value = response.data.data
+          currentMonitor.value = updated
         }
         
-        return { success: true, data: response.data.data }
+        return { success: true, data: updated }
       }
     } catch (err) {
       const message = err.response?.data?.message || 'Failed to update monitor'

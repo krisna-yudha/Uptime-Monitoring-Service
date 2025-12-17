@@ -81,16 +81,30 @@ class ProcessMonitorCheck implements ShouldQueue
             ]
         );
 
-        // Use PostgreSQL advisory lock to ensure only one worker processes this monitor
+        // Debug entry for synchronous runs
+        Log::info('ProcessMonitorCheck started', ['monitor_id' => $this->monitor->id, 'type' => $this->monitor->type]);
+
+        // Try to acquire an advisory lock to ensure only one worker processes this monitor
+        // Use PostgreSQL advisory lock when available, but gracefully fall back
+        // for other DB engines (so synchronous immediate checks don't fail).
         $lockKey = $this->monitor->id;
         $lockAcquired = false;
 
         try {
-            // Try to acquire advisory lock (non-blocking)
-            $lockResult = DB::select("SELECT pg_try_advisory_lock(?) as lock_acquired", [$lockKey]);
-            $lockAcquired = $lockResult[0]->lock_acquired ?? false;
+            try {
+                // Try to acquire advisory lock (Postgres)
+                $lockResult = DB::select("SELECT pg_try_advisory_lock(?) as lock_acquired", [$lockKey]);
+                $lockAcquired = $lockResult[0]->lock_acquired ?? false;
+            } catch (\Exception $e) {
+                // If DB does not support pg_try_advisory_lock (e.g., MySQL),
+                // log and continue without advisory locking (assume single runner)
+                Log::info('Advisory lock not supported or failed, continuing without lock: ' . $e->getMessage(), [
+                    'monitor_id' => $this->monitor->id
+                ]);
+                $lockAcquired = true; // treat as acquired so release attempt runs safely
+            }
 
-            if (!$lockAcquired) {
+            if ($lockAcquired === false) {
                 MonitoringLog::logEvent(
                     $this->monitor->id,
                     'check_skipped',
@@ -190,17 +204,25 @@ class ProcessMonitorCheck implements ShouldQueue
             }
 
             // Create monitor check record
-            $check = MonitorCheck::create([
-                'monitor_id' => $this->monitor->id,
-                'checked_at' => now(),
-                'status' => $status,
-                'latency_ms' => $latency ? round($latency) : null,
-                'http_status' => $httpStatus,
-                'error_message' => $errorMessage,
-                'response_size' => $responseSize,
-                'region' => 'local', // Can be expanded for multiple regions
-                'meta' => $meta,
-            ]);
+            try {
+                Log::info('Creating MonitorCheck record', ['monitor_id' => $this->monitor->id, 'status' => $status]);
+                $check = MonitorCheck::create([
+                    'monitor_id' => $this->monitor->id,
+                    'checked_at' => now(),
+                    'status' => $status,
+                    'latency_ms' => $latency ? round($latency) : null,
+                    'http_status' => $httpStatus,
+                    'error_message' => $errorMessage,
+                    'response_size' => $responseSize,
+                    'region' => 'local', // Can be expanded for multiple regions
+                    'meta' => $meta,
+                ]);
+                Log::info('MonitorCheck record created', ['monitor_id' => $this->monitor->id, 'check_id' => $check->id ?? null]);
+            } catch (\Exception $e) {
+                Log::error('Failed to create MonitorCheck record', ['monitor_id' => $this->monitor->id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                // Continue so monitor status updates still happen
+                $check = null;
+            }
 
             // Log successful check completion
             MonitoringLog::logEvent(
@@ -262,7 +284,15 @@ class ProcessMonitorCheck implements ShouldQueue
         } finally {
             // Always release the advisory lock
             if ($lockAcquired) {
-                DB::select("SELECT pg_advisory_unlock(?)", [$lockKey]);
+                try {
+                    // Try to release Postgres advisory lock if supported
+                    DB::select("SELECT pg_advisory_unlock(?)", [$lockKey]);
+                } catch (\Exception $e) {
+                    // If DB does not support advisory unlock, just ignore
+                    Log::debug('Advisory unlock not supported or failed: ' . $e->getMessage(), [
+                        'monitor_id' => $this->monitor->id
+                    ]);
+                }
             }
         }
     }
@@ -273,7 +303,8 @@ class ProcessMonitorCheck implements ShouldQueue
         $config = $this->monitor->config ?? [];
         
         $httpClient = Http::timeout($this->monitor->timeout_ms / 1000)
-            ->retry($this->monitor->retries, 1000);
+            ->retry($this->monitor->retries, 1000)
+            ->withOptions(['allow_redirects' => true]);
 
         // Add custom headers if configured
         if (isset($config['headers'])) {
@@ -708,7 +739,8 @@ class ProcessMonitorCheck implements ShouldQueue
             
             $httpClient = Http::timeout($timeout)
                 ->retry(1, 1000)
-                ->connectTimeout(10);
+                ->connectTimeout(10)
+                ->withOptions(['allow_redirects' => true]);
                 
             if (!$verifySSL) {
                 $httpClient = $httpClient->withoutVerifying();
@@ -902,6 +934,8 @@ class ProcessMonitorCheck implements ShouldQueue
             'last_error' => $validationResult['reason'],
             'error_message' => $validationResult['reason'],
             'last_error_at' => now(),
+            // Schedule next check so monitoring will retry automatically
+            'next_check_at' => now()->addSeconds($this->monitor->interval_seconds ?? 60),
         ]);
         
         // Create a monitor check record

@@ -50,7 +50,7 @@ export default {
   // Monitor endpoints
   monitors: {
     getAll: (params = {}) => api.get('/monitors', { params }),
-    getById: (id) => api.get(`/monitors/${id}`),
+    getById: (id, params = {}) => api.get(`/monitors/${id}`, { params }),
     create: (data) => api.post('/monitors', data),
     update: (id, data) => api.put(`/monitors/${id}`, data),
     delete: (id) => api.delete(`/monitors/${id}`),
@@ -94,8 +94,8 @@ export default {
     getAll: (params = {}) => api.get('/incidents', { params }),
     getById: (id) => api.get(`/incidents/${id}`),
     update: (id, data) => api.put(`/incidents/${id}`, data),
-    acknowledge: (id) => api.post(`/incidents/${id}/acknowledge`),
-    resolve: (id) => api.post(`/incidents/${id}/resolve`),
+    acknowledge: (id, data = {}) => api.post(`/incidents/${id}/acknowledge`, data),
+    resolve: (id, data = {}) => api.post(`/incidents/${id}/resolve`, data),
     reopen: (id) => api.post(`/incidents/${id}/reopen`),
     addNote: (id, data) => api.post(`/incidents/${id}/notes`, data)
   },

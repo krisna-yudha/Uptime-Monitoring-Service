@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class MonitorController extends Controller
@@ -71,6 +72,8 @@ class MonitorController extends Controller
             'group_config' => 'nullable|array',
             'type' => 'required|in:http,https,tcp,ping,keyword,push',
             'target' => 'required|string',
+            'port' => 'nullable|integer|min:1|max:65535',
+            'port_number' => 'nullable|integer|min:1|max:65535',
             'interval_seconds' => 'sometimes|integer|min:1|max:3600',
             'timeout_ms' => 'sometimes|integer|min:1000|max:30000',
             'retries' => 'sometimes|integer|min:1|max:5',
@@ -88,11 +91,40 @@ class MonitorController extends Controller
         }
 
         $data = $validator->validated();
+        if (!isset($data['port']) && isset($data['port_number'])) {
+            $data['port'] = $data['port_number'];
+        }
+        unset($data['port_number']);
         $data['created_by'] = auth('api')->id();
         
         // Set default interval to 1 second for realtime monitoring if not provided
         if (!isset($data['interval_seconds'])) {
             $data['interval_seconds'] = 1;
+        }
+
+        // Coerce config/tags/notification_channels if they're provided as JSON strings
+        if (isset($data['config']) && is_string($data['config'])) {
+            $decoded = json_decode($data['config'], true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $data['config'] = $decoded;
+            }
+        }
+
+        if (isset($data['tags']) && is_string($data['tags'])) {
+            // Accept either JSON array string or comma-separated string
+            $decoded = json_decode($data['tags'], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $data['tags'] = $decoded;
+            } else {
+                $data['tags'] = array_filter(array_map('trim', explode(',', $data['tags'])));
+            }
+        }
+
+        if (isset($data['notification_channels']) && is_string($data['notification_channels'])) {
+            $decoded = json_decode($data['notification_channels'], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $data['notification_channels'] = $decoded;
+            }
         }
         
         // Generate heartbeat key for push monitors
@@ -103,9 +135,48 @@ class MonitorController extends Controller
         $monitor = Monitor::create($data);
         $monitor->load('creator:id,name,email');
 
-        // Dispatch initial monitor check immediately
+        // Execute initial monitor check IMMEDIATELY (not queued) for instant feedback
         // This will check status and SSL certificate (if HTTPS) right away
-        \App\Jobs\ProcessMonitorCheck::dispatch($monitor);
+        try {
+            // Always run initial check synchronously on monitor creation for immediate feedback.
+            try {
+                \App\Jobs\ProcessMonitorCheck::dispatchSync($monitor);
+                Log::info('Initial monitor check executed synchronously (default)', ['monitor_id' => $monitor->id]);
+            } catch (\Exception $e) {
+                // If synchronous dispatch fails for any reason, fall back to queued dispatch.
+                try {
+                    \App\Jobs\ProcessMonitorCheck::dispatch($monitor)->afterCommit();
+                    Log::warning('Synchronous initial check failed; dispatched to queue as fallback', ['monitor_id' => $monitor->id, 'error' => $e->getMessage()]);
+                } catch (\Exception $inner) {
+                    Log::warning('Failed to dispatch initial monitor check (both sync and queue)', ['monitor_id' => $monitor->id, 'error' => $inner->getMessage()]);
+                }
+            }
+        } catch (\Exception $e) {
+            // Log error but don't fail the creation
+            Log::warning('Failed to dispatch initial monitor check', [
+                'monitor_id' => $monitor->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        // Reload monitor to reflect any updates made by the immediate check
+        try {
+            $monitor->refresh();
+        } catch (\Exception $e) {
+            Log::info('Failed to refresh monitor after immediate check: ' . $e->getMessage(), ['monitor_id' => $monitor->id]);
+        }
+
+        // Load creator and the most recent check so frontend receives status + response immediately
+        try {
+            $monitor->load([
+                'creator:id,name,email',
+                'checks' => function ($q) {
+                    $q->latest()->limit(5);
+                }
+            ]);
+        } catch (\Exception $e) {
+            Log::debug('Failed to eager-load checks for monitor create response: ' . $e->getMessage(), ['monitor_id' => $monitor->id]);
+        }
 
         return response()->json([
             'success' => true,
@@ -160,6 +231,8 @@ class MonitorController extends Controller
             'name' => 'sometimes|string|max:255',
             'type' => 'sometimes|in:http,https,tcp,ping,keyword,push',
             'target' => 'sometimes|string',
+            'port' => 'nullable|integer|min:1|max:65535',
+            'port_number' => 'nullable|integer|min:1|max:65535',
             'interval_seconds' => 'sometimes|integer|min:1|max:3600',
             'timeout_ms' => 'sometimes|integer|min:1000|max:30000',
             'retries' => 'sometimes|integer|min:1|max:5',
@@ -176,8 +249,32 @@ class MonitorController extends Controller
             ], 422);
         }
 
-        $monitor->update($validator->validated());
+        $data = $validator->validated();
+        if (!isset($data['port']) && isset($data['port_number'])) {
+            $data['port'] = $data['port_number'];
+        }
+        unset($data['port_number']);
+
+        $monitor->update($data);
         $monitor->load('creator:id,name,email');
+        // If important fields changed (target/type/config), trigger an immediate re-validation
+        $importantChanged = $monitor->wasChanged('target') || $monitor->wasChanged('type') || $monitor->wasChanged('config');
+
+        if ($importantChanged) {
+            // Reset last_status so validation path runs on next check
+            try {
+                $monitor->update(['last_status' => null]);
+            } catch (\Exception $e) {
+                // Ignore update failures here
+                Log::debug('Failed to reset last_status after monitor update: ' . $e->getMessage(), ['monitor_id' => $monitor->id]);
+            }
+
+            try {
+                \App\Jobs\ProcessMonitorCheck::dispatch($monitor)->afterCommit();
+            } catch (\Exception $e) {
+                Log::warning('Failed to dispatch monitor check after update', ['monitor_id' => $monitor->id, 'error' => $e->getMessage()]);
+            }
+        }
 
         return response()->json([
             'success' => true,

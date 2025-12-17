@@ -12,9 +12,24 @@ class Cors
      */
     public function handle(Request $request, Closure $next)
     {
-        return $next($request)
-            ->header('Access-Control-Allow-Origin', '*')
-            ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-            ->header('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, X-Token-Auth, Authorization, Accept, Application');
+        // Izinkan semua origin secara default; dapat diganti via env jika perlu
+        $origin = '*';
+        $headers = [
+            'Access-Control-Allow-Origin' => $origin,
+            'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers' => 'Origin, X-Requested-With, Content-Type, X-Token-Auth, Authorization, Accept, Application',
+        ];
+
+        // Preflight request: balas segera agar tidak lewat ke stack lain
+        if ($request->isMethod('OPTIONS')) {
+            return response()->json(['success' => true], 200, $headers);
+        }
+
+        $response = $next($request);
+        foreach ($headers as $key => $value) {
+            $response->headers->set($key, $value);
+        }
+
+        return $response;
     }
 }

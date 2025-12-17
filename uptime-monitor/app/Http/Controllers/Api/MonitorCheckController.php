@@ -13,11 +13,15 @@ class MonitorCheckController extends Controller
      */
     public function index(Request $request)
     {
-        $query = MonitorCheck::query();
+        // Optimize: Only select needed columns to reduce memory usage
+        $query = MonitorCheck::select('id', 'monitor_id', 'checked_at', 'status', 'latency_ms', 'error_message', 'http_status');
 
-        // Filter by monitor_id
+        // Filter by monitor_id (required for performance)
         if ($request->has('monitor_id')) {
             $query->where('monitor_id', $request->monitor_id);
+        } else {
+            // If no monitor_id, limit to prevent huge queries
+            $query->where('checked_at', '>=', now()->subDays(7));
         }
 
         // Filter by status
@@ -33,13 +37,20 @@ class MonitorCheckController extends Controller
             $query->where('checked_at', '<=', $request->to_date);
         }
 
-        // Sorting
+        // Sorting - optimize with index
         $sortBy = $request->get('sort', 'checked_at');
         $order = $request->get('order', 'desc');
+        
+        // Ensure sort column is valid
+        $allowedSorts = ['checked_at', 'status', 'latency_ms', 'id'];
+        if (!in_array($sortBy, $allowedSorts)) {
+            $sortBy = 'checked_at';
+        }
+        
         $query->orderBy($sortBy, $order);
 
-        // Pagination
-        $perPage = $request->get('per_page', 15);
+        // Pagination with reasonable limits
+        $perPage = min($request->get('per_page', 15), 500); // Max 500 per page
         $checks = $query->paginate($perPage);
 
         return response()->json([

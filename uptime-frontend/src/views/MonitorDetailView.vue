@@ -172,7 +172,8 @@
       <div class="history-header">
         <div class="history-title-section">
           <h2>Status History</h2>
-          <span class="realtime-indicator" :class="{ active: historyRefreshInterval }">🔄 Live</span>
+            <span class="realtime-indicator" :class="{ active: historyRefreshInterval }">🔄 Live</span>
+            <span v-if="pollingFirstCheck" class="first-check-note" style="margin-left:12px;color:#ffd166;font-weight:600;">Waiting for first check…</span>
         </div>
         <button @click="clearData" class="btn btn-outline btn-sm">
           🗑️ Clear Data
@@ -280,8 +281,13 @@ const chartInstance = ref(null)
 const chartLoading = ref(false)
 const chartRefreshInterval = ref(null)
 const historyRefreshInterval = ref(null)
+const fallbackHistoryPollInterval = ref(null)
 const lastUpdateTime = ref(0)
 const isUpdating = ref(false)
+const lastKnownCheckedAt = ref(null)
+const pollingFirstCheck = ref(false)
+let firstCheckPollInterval = null
+let firstCheckPollAttempts = 0
 
 // Chart periods
 const chartPeriods = [
@@ -380,13 +386,47 @@ onMounted(async () => {
   console.log('📱 Component mounted, loading monitor data...')
   await nextTick()
   await fetchMonitorData()
+  // Start a lightweight fallback poll to ensure history keeps updating
+  ensureHistoryPolling()
   // Auto-refresh akan di-start setelah monitor berhasil di-load
+  // Expose small helpers for debugging from DevTools
+  try {
+    window.__monitorHelpers = window.__monitorHelpers || {}
+    window.__monitorHelpers.forceFetchChecks = async (id) => {
+      try {
+        const response = await monitorStore.api.monitorChecks.getAll({ monitor_id: id || route.params.id, per_page: 100, sort: 'checked_at', order: 'desc', _t: Date.now() })
+        console.log('Helper: monitor-checks response for', id || route.params.id, response.data)
+        return response.data
+      } catch (e) {
+        console.error('Helper fetch failed', e)
+        throw e
+      }
+    }
+    window.__monitorHelpers.forceRefreshUI = async (id) => {
+      // force fetch monitor and status history
+      try {
+        await monitorStore.fetchMonitor(id || route.params.id, { _t: Date.now() })
+        await fetchStatusHistory()
+        console.log('Helper: forced UI refresh complete')
+      } catch (e) {
+        console.error('Helper refresh failed', e)
+      }
+    }
+  } catch (e) {}
 })
 
 onUnmounted(() => {
   destroyChart()
   stopChartAutoRefresh()
   stopHistoryAutoRefresh()
+  stopFirstCheckPoll()
+  stopFallbackHistoryPolling()
+  try {
+    if (window.__monitorHelpers) {
+      delete window.__monitorHelpers.forceFetchChecks
+      delete window.__monitorHelpers.forceRefreshUI
+    }
+  } catch (e) {}
 })
 
 // Watchers
@@ -503,7 +543,17 @@ async function fetchMonitorData() {
     const result = await monitorStore.fetchMonitor(route.params.id, { _t: cacheBuster })
     
     if (result.success) {
+      // Store monitor and normalize checks shape so UI always finds latency
       monitor.value = result.data
+      if (monitor.value.checks && monitor.value.checks.length > 0) {
+        monitor.value.checks = monitor.value.checks.map(c => ({
+          ...c,
+          latency_ms: c.latency_ms ?? c.latency ?? c.response_time ?? c.response_time_ms ?? null
+        }))
+        console.log('🔎 First check latency after load:', monitor.value.checks[0].latency_ms)
+      } else {
+        console.log('🔎 No checks present in monitor payload')
+      }
       
       console.log('✅ Monitor loaded:', monitor.value.name)
       console.log('⏱️ Monitor checks every:', monitor.value.interval_seconds, 'seconds')
@@ -517,14 +567,37 @@ async function fetchMonitorData() {
       
       // Pastikan canvas siap
       await nextTick()
-      
+      // If the monitor payload already contains recent checks (create response),
+      // seed the status history so the UI updates immediately while full history
+      // is fetched in the background.
+      if (monitor.value.checks && monitor.value.checks.length > 0) {
+        allStatusHistory.value = monitor.value.checks.map(check => ({
+          id: check.id,
+          status: check.status,
+          checked_at: check.checked_at,
+          response_time: check.latency_ms ?? check.latency ?? check.response_time ?? check.response_time_ms ?? null,
+          error_message: check.error_message
+        }))
+        totalItems.value = allStatusHistory.value.length
+        currentPage.value = 1
+        console.log('🧩 Seeded status history from monitor.checks:', allStatusHistory.value.length)
+      }
+
       await Promise.all([
         fetchStatusHistory(),
         fetchChartData()
       ])
       
       // Auto-refresh will be started automatically after chart is created in fetchChartData
+      // record last known checked time so live updates can detect new checks
+      lastKnownCheckedAt.value = monitor.value.last_checked_at || null
       console.log('✅ Monitor data and chart loaded successfully')
+      // Ensure Pinia store currentMonitor reflects any normalized checks
+      try {
+        monitorStore.currentMonitor = monitor.value
+      } catch (e) {
+        console.warn('Failed to sync component monitor into store.currentMonitor', e)
+      }
     } else {
       error.value = result.message
     }
@@ -539,17 +612,30 @@ async function fetchMonitorData() {
 // Refresh monitor data silently (without loading state) for auto-refresh
 async function refreshMonitorData() {
   try {
-    const result = await monitorStore.fetchMonitor(route.params.id)
+    const result = await monitorStore.fetchMonitor(route.params.id, { _t: Date.now() })
     
     if (result.success) {
       // Update monitor data including checks for current response time
+      // Always attempt to refresh history after silent monitor refresh --
+      // this ensures recent checks are reflected even if last_checked_at
+      // formats or small timing differences prevent simple comparisons.
+      try {
+        await updateHistoryRealtime()
+      } catch (e) {
+        console.warn('⚠️ updateHistoryRealtime failed during background refresh', e)
+      }
+
       monitor.value.last_status = result.data.last_status
       monitor.value.last_checked_at = result.data.last_checked_at
       monitor.value.uptime_percentage = result.data.uptime_percentage
       
       // Update checks array if available (for current response time)
       if (result.data.checks && result.data.checks.length > 0) {
-        monitor.value.checks = result.data.checks
+        // Normalize checks to ensure latency_ms is present (fallbacks for different API shapes)
+        monitor.value.checks = result.data.checks.map(c => ({
+          ...c,
+          latency_ms: c.latency_ms ?? c.latency ?? c.response_time ?? c.response_time_ms ?? null
+        }))
       }
       
       console.log('🔄 Monitor data refreshed:', {
@@ -573,38 +659,68 @@ async function fetchStatusHistory() {
       monitor_id: route.params.id,
       per_page: 100,
       sort: 'checked_at',
-      order: 'desc'
+      order: 'desc',
+      _t: Date.now()
     })
     
     console.log('📦 API Response:', response.data)
+    console.log('📦 Raw checks payload:', response.data.data)
     
-    if (response.data.success) {
+      if (response.data.success) {
       let checks = []
-      
+
       if (response.data.data.data) {
         checks = response.data.data.data
       } else if (Array.isArray(response.data.data)) {
         checks = response.data.data
       }
-      
-      console.log('📋 Status checks found:', checks.length)
-      
-      allStatusHistory.value = checks.map(check => ({
+
+      // Normalize latency and dedupe by id, then sort by checked_at desc
+      const normalized = checks.map(c => ({
+        ...c,
+        latency_ms: c.latency_ms ?? c.latency ?? c.response_time ?? c.response_time_ms ?? null
+      }))
+
+      const byId = normalized.reduce((map, c) => {
+        map[c.id] = c
+        return map
+      }, {})
+
+      let uniqueChecks = Object.values(byId)
+      uniqueChecks.sort((a, b) => new Date(b.checked_at) - new Date(a.checked_at))
+
+      console.log('📋 Status checks found (unique):', uniqueChecks.length)
+
+      allStatusHistory.value = uniqueChecks.map(check => ({
         id: check.id,
         status: check.status,
         checked_at: check.checked_at,
         response_time: check.latency_ms,
         error_message: check.error_message
       }))
-      
+
+      // Also update monitor.checks so stats and current latency reflect latest data
+      try {
+        if (monitor.value && monitor.value.id == route.params.id) {
+          monitor.value.checks = uniqueChecks.map(c => ({ ...c }))
+        }
+      } catch (e) {
+        console.warn('Failed to sync monitor.checks from status history', e)
+      }
+
       totalItems.value = allStatusHistory.value.length
       currentPage.value = 1
-      
+
       console.log(`✅ Loaded ${allStatusHistory.value.length} status checks from API`)
       console.log('📊 First check:', allStatusHistory.value[0])
       
       // Start history auto-refresh
       startHistoryAutoRefresh()
+
+      // If no checks yet, start a short aggressive poll to surface the first checks quickly
+      if (allStatusHistory.value.length === 0) {
+        startFirstCheckPoll()
+      }
     } else {
       console.warn('❌ Failed to fetch monitor checks:', response.data.message)
       allStatusHistory.value = []
@@ -626,26 +742,57 @@ async function updateHistoryRealtime() {
       monitor_id: route.params.id,
       per_page: 10,
       sort: 'checked_at',
-      order: 'desc'
+      order: 'desc',
+      _t: Date.now()
     })
     
     if (response.data.success) {
-      const latestChecks = response.data.data.data || response.data.data || []
-      
-      latestChecks.forEach(check => {
-        const exists = allStatusHistory.value.find(item => item.id === check.id)
-        if (!exists) {
-          allStatusHistory.value.unshift({
-            id: check.id,
-            status: check.status,
-            checked_at: check.checked_at,
-            response_time: check.latency_ms,
-            error_message: check.error_message
-          })
+        const latestChecks = response.data.data.data || response.data.data || []
+
+        console.log('🔁 updateHistoryRealtime fetched', latestChecks.length, 'checks')
+
+        let newAdded = 0
+        latestChecks.forEach(check => {
+          const exists = allStatusHistory.value.find(item => item.id === check.id)
+          if (!exists) {
+            allStatusHistory.value.unshift({
+              id: check.id,
+              status: check.status,
+              checked_at: check.checked_at,
+              response_time: check.latency_ms ?? check.latency ?? check.response_time ?? check.response_time_ms ?? null,
+              error_message: check.error_message
+            })
+            newAdded++
+          }
+        })
+
+        totalItems.value = allStatusHistory.value.length
+        console.log(`✅ updateHistoryRealtime added ${newAdded} new checks (total ${totalItems.value})`)
+
+        // If we were polling for the first check and we got data, stop the polling
+        if (pollingFirstCheck.value && totalItems.value > 0) {
+          stopFirstCheckPoll()
+          console.log('✅ First checks received, stopped aggressive polling')
         }
-      })
-      
-      totalItems.value = allStatusHistory.value.length
+        // If we added new checks, update lastKnownCheckedAt to the newest check's timestamp
+        if (newAdded > 0 && allStatusHistory.value.length > 0) {
+          try {
+            lastKnownCheckedAt.value = allStatusHistory.value[0].checked_at || lastKnownCheckedAt.value
+            console.log('🔔 lastKnownCheckedAt updated to', lastKnownCheckedAt.value)
+          } catch (e) {}
+          // Trigger chart update when new checks arrive
+          try {
+            if (chartInstance.value) {
+              // update chart using latest data points
+              updateChartRealtime()
+            } else {
+              // If chart not initialized yet, ensure fetchChartData will draw it when ready
+              fetchChartData().catch(() => {})
+            }
+          } catch (e) {
+            console.warn('Failed to trigger chart update after new checks', e)
+          }
+        }
     }
   } catch (err) {
     // silent error
@@ -723,6 +870,67 @@ function stopHistoryAutoRefresh() {
   }
 }
 
+function startFirstCheckPoll() {
+  stopFirstCheckPoll()
+
+  if (!monitor.value) return
+
+  pollingFirstCheck.value = true
+  firstCheckPollAttempts = 0
+  console.log('🔎 Starting aggressive first-check poll (1s interval, max 20s)')
+
+  firstCheckPollInterval = setInterval(async () => {
+    firstCheckPollAttempts++
+    try {
+      await updateHistoryRealtime()
+    } catch (e) {
+      // ignore
+    }
+
+    if (allStatusHistory.value.length > 0 || firstCheckPollAttempts >= 20) {
+      stopFirstCheckPoll()
+      console.log('⏹️ First-check poll stopped (attempts:', firstCheckPollAttempts, ')')
+    }
+  }, 1000)
+}
+
+function stopFirstCheckPoll() {
+  pollingFirstCheck.value = false
+  if (firstCheckPollInterval) {
+    clearInterval(firstCheckPollInterval)
+    firstCheckPollInterval = null
+  }
+}
+
+// Fallback polling: ensures updateHistoryRealtime is invoked even if
+// startHistoryAutoRefresh wasn't started for any reason (network race, chart failure)
+function ensureHistoryPolling() {
+  stopFallbackHistoryPolling()
+  // Only start fallback if no primary history refresh is active
+  if (!historyRefreshInterval.value) {
+    console.log('🔁 Starting fallback history poll (5s)')
+    fallbackHistoryPollInterval.value = setInterval(async () => {
+      try {
+        await updateHistoryRealtime()
+        // If primary historyAutoRefresh starts, stop the fallback
+        if (historyRefreshInterval.value) {
+          stopFallbackHistoryPolling()
+          console.log('🔁 Primary history auto-refresh detected, stopped fallback poll')
+        }
+      } catch (e) {
+        // ignore errors; fallback should be resilient
+      }
+    }, 5000)
+  }
+}
+
+function stopFallbackHistoryPolling() {
+  if (fallbackHistoryPollInterval.value) {
+    clearInterval(fallbackHistoryPollInterval.value)
+    fallbackHistoryPollInterval.value = null
+  }
+}
+
 async function updateChartRealtime() {
   if (!responseChart.value || chartLoading.value) return
   
@@ -747,6 +955,7 @@ async function updateChartRealtime() {
       per_page: getPeriodLimit(selectedPeriod.value),
       sort: 'checked_at',
       order: 'desc'
+      , _t: Date.now()
     })
     
     if (response.data.success) {
@@ -761,7 +970,7 @@ async function updateChartRealtime() {
       // Convert to chart data points
       const dataPoints = checks.reverse().map(check => ({
         time: new Date(check.checked_at).getTime(),
-        value: check.latency_ms || 0
+        value: (check.latency_ms ?? check.latency ?? check.response_time ?? check.response_time_ms ?? 0) || 0
       }))
       
       // Redraw chart with new data
@@ -816,6 +1025,7 @@ async function fetchChartData() {
       per_page: getPeriodLimit(selectedPeriod.value),
       sort: 'checked_at',
       order: 'desc'
+      , _t: Date.now()
     })
     
     console.log('📦 Chart API Response:', response.data)
@@ -831,7 +1041,7 @@ async function fetchChartData() {
         // Convert to chart data points
         const dataPoints = checks.reverse().map(check => ({
           time: new Date(check.checked_at).getTime(),
-          value: check.latency_ms || 0
+          value: (check.latency_ms ?? check.latency ?? check.response_time ?? check.response_time_ms ?? 0) || 0
         }))
         
         console.log('📈 Drawing chart with', dataPoints.length, 'points')
@@ -894,6 +1104,9 @@ function drawChart(dataPoints) {
   const maxValue = Math.max(...dataPoints.map(d => d.value))
   const minValue = Math.min(...dataPoints.map(d => d.value))
   const valueRange = maxValue - minValue || 100
+
+  // Handle single data point to avoid division by zero
+  const segmentCount = Math.max(1, dataPoints.length - 1)
   
   // Draw grid lines
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
@@ -917,6 +1130,8 @@ function drawChart(dataPoints) {
     ctx.stroke()
   }
   
+  const xSpacing = chartWidth / segmentCount
+
   // Draw chart line
   if (dataPoints.length > 1) {
     ctx.strokeStyle = '#00b894'
@@ -927,7 +1142,7 @@ function drawChart(dataPoints) {
     ctx.beginPath()
     
     dataPoints.forEach((point, index) => {
-      const x = padding + (chartWidth / (dataPoints.length - 1)) * index
+      const x = padding + xSpacing * index
       const y = padding + chartHeight - ((point.value - minValue) / valueRange) * chartHeight
       
       if (index === 0) {
@@ -949,7 +1164,7 @@ function drawChart(dataPoints) {
     // Draw data points with animation effect for latest point
     ctx.fillStyle = '#00b894'
     dataPoints.forEach((point, index) => {
-      const x = padding + (chartWidth / (dataPoints.length - 1)) * index
+      const x = padding + xSpacing * index
       const y = padding + chartHeight - ((point.value - minValue) / valueRange) * chartHeight
       
       ctx.beginPath()
@@ -983,11 +1198,29 @@ function drawChart(dataPoints) {
     ctx.textAlign = 'center'
     dataPoints.forEach((point, index) => {
       if (index % Math.ceil(dataPoints.length / 6) === 0 || index === dataPoints.length - 1) {
-        const x = padding + (chartWidth / (dataPoints.length - 1)) * index
+        const x = padding + xSpacing * index
         const label = formatChartTime(point.time, selectedPeriod.value)
         ctx.fillText(label, x, canvas.height - 10)
       }
     })
+  } else if (dataPoints.length === 1) {
+    // Single data point: place it in the middle
+    const point = dataPoints[0]
+    const x = padding + chartWidth / 2
+    const y = padding + chartHeight - ((point.value - minValue) / valueRange) * chartHeight
+
+    ctx.fillStyle = '#00b894'
+    ctx.beginPath()
+    ctx.arc(x, y, 6, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Draw labels for single point
+    ctx.fillStyle = '#b2bec3'
+    ctx.font = '12px Arial'
+    ctx.textAlign = 'center'
+    ctx.fillText(formatChartTime(point.time, selectedPeriod.value), x, canvas.height - 10)
+    ctx.textAlign = 'right'
+    ctx.fillText(Math.round(point.value) + 'ms', padding - 10, y + 4)
   }
   
   chartInstance.value = true // Mark as initialized
@@ -2160,5 +2393,136 @@ function formatDateTime(dateString) {
     font-size: 1.1rem;
     padding: 6px 12px;
   }
+}
+</style>
+
+<style scoped>
+/* Mobile readability tweaks: increase spacing, slightly larger values, responsive chart height */
+@media (max-width: 768px) {
+  .detail-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .monitor-title h1 {
+    font-size: 1.4rem;
+    line-height: 1.2;
+  }
+
+  .chart-container {
+    height: 320px;
+    padding: 12px;
+  }
+
+  .chart-container canvas {
+    max-height: 320px;
+    height: 100% !important;
+  }
+
+  .stat-card {
+    min-height: auto;
+    padding: 14px;
+  }
+
+  .stat-header {
+    font-size: 0.9rem;
+    color: #e6eef0;
+  }
+
+  .stat-value {
+    font-size: 1.6rem;
+  }
+
+  .chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .chart-period {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .period-btn {
+    padding: 6px 8px;
+    font-size: 0.85rem;
+  }
+
+  .monitor-url .url-text {
+    max-width: 100%;
+    font-size: 1rem;
+    word-break: break-word;
+  }
+
+  .current-status {
+    text-align: center;
+    align-self: center;
+    min-width: auto;
+  }
+
+  .history-table th, .history-table td {
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .detail-header { padding: 10px; }
+  .monitor-title h1 { font-size: 1.1rem; }
+  .chart-container { height: 280px; }
+  .chart-container canvas { height: 100% !important; }
+  .stat-card { padding: 12px; }
+  .stat-subheader { font-size: 1.2rem; }
+  .stat-value { font-size: 1.4rem; }
+  .period-btn { padding: 6px 8px; font-size: 0.8rem; }
+  .history-table th, .history-table td { font-size: 0.85rem; padding: 8px; }
+  .chart-container { padding: 8px; }
+}
+</style>
+
+<style scoped>
+/* Higher-contrast overrides for better readability on small screens */
+.monitor-detail .chart-container {
+  background: #0b1113 !important;
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.7) !important;
+}
+.monitor-detail .chart-container canvas {
+  background: #07090a !important;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 6px rgba(0,0,0,0.6);
+}
+.monitor-detail .chart-header h2,
+.monitor-detail .stat-header,
+.monitor-detail .trend-text,
+.monitor-detail .history-table th,
+.monitor-detail .history-table td,
+.monitor-detail .status-info {
+  color: #eef6f7 !important;
+}
+
+/* Monitor title: use black for better legibility as requested */
+.monitor-detail .monitor-title h1 {
+  color: #000000 !important;
+}
+.monitor-detail .period-btn {
+  color: #ffffff !important;
+  background: rgba(255,255,255,0.03) !important;
+  border-color: rgba(255,255,255,0.12) !important;
+}
+.monitor-detail .period-btn.active {
+  background: #00b894 !important;
+  color: #012214 !important;
+}
+
+@media (max-width: 768px) {
+  .monitor-detail .chart-container { background: #071014 !important; }
+  .monitor-detail .chart-container canvas { box-shadow: none !important; }
+  .monitor-detail .stat-card { background: linear-gradient(180deg,#101315,#0f1214) !important; border-left-color: #00b894 !important; }
+  .monitor-detail .history-table { background: #0b0f11 !important; }
+  .monitor-detail .history-table th { background: #1b1f22 !important; color: #eef6f7 !important; }
+  .monitor-detail .history-table td { color: #ddeff0 !important; }
 }
 </style>

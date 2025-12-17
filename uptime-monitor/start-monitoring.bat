@@ -27,7 +27,7 @@ timeout /t 2 /nobreak >nul
 
 REM Start Monitor Checks Queue Worker in background
 echo [%time%] 3/5 Starting Monitor Checks Queue Worker...
-start "Monitor Checks Worker" cmd /c "php artisan queue:work database --queue=monitor-checks --sleep=3 --tries=3 --verbose"
+start "Monitor Checks Worker" cmd /c "php artisan queue:work database --queue=high-priority,monitor-checks --sleep=3 --tries=3 --verbose"
 timeout /t 2 /nobreak >nul
 
 REM Start Notification Worker in background

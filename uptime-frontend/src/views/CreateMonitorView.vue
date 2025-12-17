@@ -155,14 +155,27 @@
           
           <div class="form-group">
             <label for="target" class="form-label">Target *</label>
-            <input
-              id="target"
-              v-model="form.target"
-              type="text"
-              class="form-control"
-              required
-              :placeholder="getTargetPlaceholder()"
-            >
+            <div style="display:flex;gap:12px;align-items:center;">
+              <input
+                id="target"
+                v-model="form.target"
+                type="text"
+                class="form-control"
+                required
+                :placeholder="getTargetPlaceholder()"
+                style="flex:1"
+              >
+              <input
+                id="port"
+                v-model.number="form.port"
+                type="number"
+                class="form-control"
+                min="1"
+                max="65535"
+                placeholder="Port (optional)"
+                style="width:120px"
+              >
+            </div>
             <small class="form-text">
               {{ getTargetHelp() }}
             </small>
@@ -403,6 +416,7 @@ const form = reactive({
   name: '',
   type: '',
   target: '',
+  port: null,
   group_name: '',
   group_description: '',
   interval_seconds: 1,
@@ -587,6 +601,45 @@ async function handleSubmit() {
 
     // Prepare monitor data
     const monitorData = { ...form }
+    // Validate and attach port if provided
+    if (monitorData.port) {
+      const portNum = Number(monitorData.port)
+      if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+        error.value = 'Port must be an integer between 1 and 65535'
+        loading.value = false
+        return
+      }
+
+      const targetRaw = String(monitorData.target || '').trim()
+      try {
+        if (['http', 'https'].includes(form.type)) {
+          // Try to preserve URL and set port via URL API
+          try {
+            const parsed = new URL(targetRaw)
+            parsed.port = String(portNum)
+            monitorData.target = parsed.toString()
+          } catch (e) {
+            // If URL parsing fails (no scheme), append port
+            if (!targetRaw.includes(':')) {
+              monitorData.target = `${targetRaw}:${portNum}`
+            }
+          }
+        } else if (form.type === 'tcp') {
+          // For tcp, ensure host:port format
+          if (!targetRaw.includes(':')) {
+            monitorData.target = `${targetRaw}:${portNum}`
+          }
+        } else {
+          // For other types, append port if not present
+          if (!targetRaw.includes(':')) {
+            monitorData.target = `${targetRaw}:${portNum}`
+          }
+        }
+      } catch (e) {
+        // fallback: append port
+        if (!targetRaw.includes(':')) monitorData.target = `${targetRaw}:${portNum}`
+      }
+    }
     
     // Clear group fields if "none" is selected
     if (selectedGroupType.value === 'none') {
@@ -623,7 +676,51 @@ async function handleSubmit() {
     const result = await monitorStore.createMonitor(monitorData)
 
     if (result.success) {
-      router.push('/monitors')
+      // Await prefetch of the newly created monitor to ensure fresh data (SSL fields, checks) is available
+      const created = result.data
+      try {
+        const prefetch = await monitorStore.fetchMonitor(created.id, { _t: Date.now() })
+        console.log('Prefetched monitor after create:', prefetch)
+      } catch (err) {
+        console.warn('Prefetch failed:', err)
+      }
+      // Try to prefetch recent checks and inject into store so Detail view shows history immediately
+      try {
+        const checksResp = await monitorStore.api.monitorChecks.getAll({
+          monitor_id: created.id,
+          per_page: 10,
+          sort: 'checked_at',
+          order: 'desc',
+          _t: Date.now()
+        })
+
+        if (checksResp.data && checksResp.data.success) {
+          const checks = checksResp.data.data.data || checksResp.data.data || []
+          if (checks.length > 0) {
+            const normalized = checks.map(c => ({
+              ...c,
+              latency_ms: c.latency_ms ?? c.latency ?? c.response_time ?? c.response_time_ms ?? null
+            }))
+
+            // Update monitors list entry if present
+            const idx = monitorStore.monitors.findIndex(m => m.id === created.id)
+            if (idx !== -1) {
+              monitorStore.monitors[idx].checks = normalized
+            }
+
+            // Update currentMonitor if it matches
+            if (monitorStore.currentMonitor && monitorStore.currentMonitor.id === created.id) {
+              monitorStore.currentMonitor.checks = normalized
+            }
+
+            console.log('Prefetched and injected checks for monitor', created.id)
+          }
+        }
+      } catch (e) {
+        console.warn('Prefetch checks failed:', e)
+      }
+      // Navigate to the monitor detail so user sees the created monitor immediately
+      router.push(`/monitors/${created.id}`)
     } else {
       error.value = result.message || 'Failed to create monitor'
     }
@@ -718,8 +815,25 @@ async function handleSubmit() {
   gap: 15px;
   justify-content: flex-end;
   padding-top: 20px;
-  border-top: 1px solid #ecf0f1;
+  border-top: 1px solid #de2121;
   margin-top: 30px;
+}
+
+/* Center button text (icon + label) inside action buttons */
+.form-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Style Cancel button as red outline with red text to match primary action */
+.form-actions .btn-secondary {
+  background: transparent;
+  color: #e74c3c;
+  border: 1.5px solid #e74c3c;
+}
+.form-actions .btn-secondary:hover {
+  background: rgba(231, 76, 60, 0.06);
 }
 
 /* Group Selector Styles */
@@ -1159,7 +1273,7 @@ async function handleSubmit() {
 }
 
 .badge-discord {
-  background: #ede7f6;
+  background: #f6e7e7;
   color: #5e35b1;
 }
 

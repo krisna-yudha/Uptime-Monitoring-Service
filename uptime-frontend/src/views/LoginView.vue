@@ -82,7 +82,7 @@
           </form>
         </div>
         
-        <div class="login-footer">
+        <!-- <div class="login-footer">
           <div class="divider">
             <span>Test Accounts</span>
           </div>
@@ -106,7 +106,7 @@
               </div>
             </div>
           </div>
-        </div>
+        </div> -->
       </div>
     </div>
   </div>
@@ -142,14 +142,29 @@ function quickLogin(email, password) {
 
 <style scoped>
 /* Main container dengan gradient background yang konsisten */
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 .login-container {
   min-height: 100vh;
+  min-width: 100vw;
+  height: 100vh;
+  width: 100vw;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
   overflow: hidden;
 }
 
@@ -168,12 +183,54 @@ function quickLogin(email, password) {
 }
 
 /* Content wrapper */
+
+
+
 .login-content {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 450px;
-  animation: slideInUp 0.8s ease-out;
+  max-width: 360px;
+  animation: slideInUp 0.6s ease-out;
+}
+
+/* Prevent horizontal page scroll */
+html, body {
+  overflow-x: hidden;
+}
+
+/* Card sizing for large screens but keep compact */
+@media (min-width: 1200px) {
+  .login-content {
+    max-width: 420px;
+  }
+}
+
+/* Make card fit viewport height and scroll internally if content overflows */
+.login-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  position: relative;
+  max-height: calc(100vh - 40px);
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+/* Slightly reduce header/footer padding so total card height fits */
+.login-header {
+  padding: 28px 20px 20px 20px;
+  text-align: center;
+  position: relative;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
+}
+
+.login-footer {
+  padding: 14px 20px 18px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Main login card dengan glass morphism */
@@ -223,6 +280,7 @@ function quickLogin(email, password) {
   height: 90px;
   background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
   border-radius: 25px;
+  text-align: center;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -621,6 +679,7 @@ function quickLogin(email, password) {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   gap: 12px;
   font-weight: 600;
 }

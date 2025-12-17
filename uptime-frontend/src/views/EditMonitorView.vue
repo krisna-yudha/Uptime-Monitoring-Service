@@ -42,14 +42,27 @@
 
         <div class="form-group">
           <label for="target">Target URL/IP/Domain *</label>
-          <input
-            id="target"
-            v-model="form.target"
-            type="text"
-            :placeholder="targetPlaceholder"
-            required
-            class="form-control"
-          />
+          <div style="display:flex;gap:12px;align-items:center;">
+            <input
+              id="target"
+              v-model="form.target"
+              type="text"
+              :placeholder="targetPlaceholder"
+              required
+              class="form-control"
+              style="flex:1"
+            />
+            <input
+              id="port"
+              v-model.number="form.port_number"
+              type="number"
+              min="1"
+              max="65535"
+              placeholder="Port (optional)"
+              class="form-control"
+              style="width:120px"
+            />
+          </div>
         </div>
       </div>
 
@@ -391,6 +404,36 @@ async function fetchMonitorData() {
         form.value.http_headers = typeof monitor.http_headers === 'string' 
           ? monitor.http_headers 
           : JSON.stringify(monitor.http_headers, null, 2)
+      }
+
+      // Populate port_number from monitor if available, or parse from target
+      if (monitor.port !== undefined && monitor.port !== null) {
+        form.value.port_number = Number(monitor.port)
+      } else if (monitor.port_number !== undefined && monitor.port_number !== null) {
+        form.value.port_number = Number(monitor.port_number)
+      } else if (monitor.target) {
+        const targetRaw = String(monitor.target)
+        try {
+          if (targetRaw.includes('://')) {
+            // URL style
+            const parsed = new URL(targetRaw)
+            if (parsed.port) {
+              form.value.port_number = Number(parsed.port)
+              // preserve path but set host+path to target for clarity
+              form.value.target = parsed.hostname + (parsed.pathname || '') + (parsed.search || '')
+            }
+          } else if (targetRaw.includes(':')) {
+            // host:port style - take last segment if numeric
+            const parts = targetRaw.split(':')
+            const last = parts[parts.length - 1]
+            if (/^\d+$/.test(last)) {
+              form.value.port_number = Number(last)
+              form.value.target = parts.slice(0, parts.length - 1).join(':')
+            }
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
       }
     } else {
       error.value = result.message

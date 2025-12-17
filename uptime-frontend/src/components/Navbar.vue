@@ -58,7 +58,7 @@
         </div>
         <div class="user-details">
           <span class="user-name">{{ authStore.user?.name || 'User' }}</span>
-          <span class="user-role">{{ authStore.user?.role || 'Admin' }}</span>
+          <!-- <span class="user-role">{{ authStore.user?.role || 'Admin' }}</span> -->
         </div>
       </div>
       <div class="user-info-collapsed" v-show="isCollapsed">
@@ -468,27 +468,34 @@ onUnmounted(() => {
 /* Mobile responsive */
 @media (max-width: 768px) {
   .navbar {
-    width: 280px;
+    width: 80vw;
+    max-width: 320px;
     height: 100vh;
     position: fixed;
-    left: -280px;
-    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    left: -80vw; /* slide off-screen relative to viewport */
+    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 2000;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+    background-clip: padding-box;
   }
-  
+
   .navbar-mobile-open {
     left: 0;
   }
-  
+
   .navbar-collapsed {
-    width: 280px;
-    left: -280px;
+    width: 80vw;
+    max-width: 320px;
+    left: -80vw;
   }
-  
+
   .navbar-mobile-open.navbar-collapsed {
     left: 0;
   }
-  
+
   /* Show mobile menu toggle */
   .mobile-menu-toggle {
     display: flex;
@@ -506,23 +513,23 @@ onUnmounted(() => {
     cursor: pointer;
     z-index: 1999;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
+    padding: 0.35rem;
   }
-  
+
   .mobile-menu-toggle:hover {
-    background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
-    transform: scale(1.05);
+    transform: scale(1.04);
   }
-  
+
   .mobile-menu-toggle i {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
   }
-  
+
   /* Hide desktop toggle */
   .navbar-toggle {
     display: none;
   }
-  
+
   /* Mobile overlay */
   .mobile-overlay {
     display: block;
@@ -531,11 +538,11 @@ onUnmounted(() => {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.45);
     z-index: 1998;
-    animation: fadeIn 0.3s ease;
+    animation: fadeIn 0.22s ease;
   }
-  
+
   /* Reset navbar text visibility on mobile */
   .navbar-mobile-open .nav-text,
   .navbar-mobile-open .brand-text,
@@ -543,26 +550,40 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateX(0);
   }
-  
+
   .navbar-mobile-open .user-info-collapsed {
     display: none;
   }
-  
+
   .navbar-mobile-open .user-info {
     display: flex;
   }
-  
+
   .navbar-brand {
-    padding: 1.25rem;
-    min-height: 70px;
+    padding: 0.9rem 1rem;
+    min-height: 64px;
   }
-  
+
   .brand-text h2 {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
   }
-  
+
   .brand-subtitle {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
+  }
+
+  /* make nav items slightly more compact on small screens */
+  .nav-link {
+    padding: 12px 16px;
+  }
+
+  .nav-text {
+    font-size: 0.92rem;
+  }
+
+  /* ensure logout area has extra breathing room */
+  .navbar-user {
+    padding: 16px 14px 28px 14px;
   }
 }
 

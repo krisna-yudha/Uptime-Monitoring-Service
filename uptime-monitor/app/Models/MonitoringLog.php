@@ -114,20 +114,32 @@ class MonitoringLog extends Model
         array $logData = [],
         ?float $responseTime = null,
         ?string $errorMessage = null
-    ): self {
-        return self::create([
-            'monitor_id' => $monitorId,
-            'event_type' => $eventType,
-            'status' => $status,
-            'log_data' => array_merge([
-                'timestamp' => now()->toISOString(),
-                'server_time' => microtime(true),
-                'memory_usage' => memory_get_usage(true),
-                'php_version' => PHP_VERSION,
-            ], $logData),
-            'response_time' => $responseTime,
-            'error_message' => $errorMessage,
-            'logged_at' => now(),
-        ]);
+    ): ?self {
+        // Guard: ensure the monitor exists to avoid foreign key violations
+        try {
+            if (!\App\Models\Monitor::where('id', $monitorId)->exists()) {
+                \Illuminate\Support\Facades\Log::warning('MonitoringLog skipped - monitor not found', ['monitor_id' => $monitorId, 'event' => $eventType]);
+                return null;
+            }
+
+            return self::create([
+                'monitor_id' => $monitorId,
+                'event_type' => $eventType,
+                'status' => $status,
+                'log_data' => array_merge([
+                    'timestamp' => now()->toISOString(),
+                    'server_time' => microtime(true),
+                    'memory_usage' => memory_get_usage(true),
+                    'php_version' => PHP_VERSION,
+                ], $logData),
+                'response_time' => $responseTime,
+                'error_message' => $errorMessage,
+                'logged_at' => now(),
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Log DB errors (e.g., FK violations) and continue without throwing
+            \Illuminate\Support\Facades\Log::error('Failed to write MonitoringLog', ['monitor_id' => $monitorId, 'event' => $eventType, 'error' => $e->getMessage()]);
+            return null;
+        }
     }
 }
