@@ -90,32 +90,6 @@
             </button>
           </form>
         </div>
-        
-        <!-- <div class="login-footer">
-          <div class="divider">
-            <span>Test Accounts</span>
-          </div>
-          <div class="test-accounts">
-            <div class="account-item" @click="quickLogin('admin@uptimemonitor.local', 'password')">
-              <div class="account-role">
-                <i class="fas fa-user-shield"></i>
-                Admin
-              </div>
-              <div class="account-credentials">
-                admin@uptimemonitor.local
-              </div>
-            </div>
-            <div class="account-item" @click="quickLogin('user@uptimemonitor.local', 'password')">
-              <div class="account-role">
-                <i class="fas fa-user"></i>
-                User
-              </div>
-              <div class="account-credentials">
-                user@uptimemonitor.local
-              </div>
-            </div>
-          </div>
-        </div> -->
       </div>
     </div>
   </div>

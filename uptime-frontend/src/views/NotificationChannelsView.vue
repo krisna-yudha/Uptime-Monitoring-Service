@@ -4,7 +4,7 @@
       <div class="page-header">
       <div class="page-header-inner">
         <h1>Notification Channels</h1>
-          <button @click="showCreateForm = true" class="btn btn-primary">
+          <button v-if="!showCreateForm && !editingChannel" @click="showCreateForm = true" class="btn btn-primary">
             Add Channel
           </button>
       </div>
@@ -770,26 +770,55 @@ async function actionToggle() {
 }
 
 .channel-form-container {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  margin-bottom: 30px;
+  background: var(--color-surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow-1);
+  margin: 24px auto 30px;
+  max-width: 980px;
+  border: 1px solid rgba(15,23,42,0.04);
 }
 
 .channel-form {
-  padding: 30px;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+/* Prevent grid children and inputs from forcing horizontal overflow on narrow screens */
+.channel-form, .channel-form * {
+  box-sizing: border-box;
+}
+.channel-form > * {
+  min-width: 0; /* allow children to shrink inside the grid */
+}
+
+.form-control {
+  max-width: 100%;
+  box-sizing: border-box;
+  word-break: break-word;
 }
 
 .channel-form h2 {
-  margin: 0 0 30px 0;
-  color: #2c3e50;
+  grid-column: 1 / -1;
+  margin: 0 0 12px 0;
+  color: var(--color-text);
+  font-size: 1.25rem;
+}
+
+.channel-form h2 {
+  margin: 0 0 8px 0;
+  color: var(--color-text);
+  font-size: 1.25rem;
 }
 
 .form-section {
-  margin: 30px 0;
-  padding: 20px;
-  background-color: #f8f9fa;
-  border-radius: 6px;
+  margin: 0;
+  padding: 14px;
+  background-color: var(--color-bg);
+  border-radius: 8px;
+  grid-column: 1 / -1;
 }
 
 .form-section h3 {
@@ -799,49 +828,68 @@ async function actionToggle() {
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 5px;
-  font-weight: 500;
-  color: #2c3e50;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--color-text);
 }
 
 .form-control {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15,23,42,0.06);
+  border-radius: 10px;
+  font-size: 0.95rem;
+  background: #fff;
+  color: var(--color-text);
+  transition: box-shadow .14s ease, border-color .14s ease;
 }
 
 .form-control:focus {
   outline: none;
-  border-color: #3498db;
-  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 6px 20px rgba(37,99,235,0.1);
+}
+
+/* Ensure selects/textareas and their options render dark text */
+select.form-control,
+textarea.form-control {
+  color: var(--color-text);
+}
+
+/* Some browsers allow styling option text color */
+.form-control option {
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.form-control::placeholder {
+  color: rgba(15,23,42,0.45);
 }
 
 .form-hint {
   display: block;
-  margin-top: 5px;
-  font-size: 0.8em;
-  color: #7f8c8d;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--color-muted);
 }
 
 .telegram-help, .discord-help, .slack-help {
-  margin-top: 20px;
-  padding: 15px;
-  background-color: #e8f4f8;
-  border-left: 4px solid #3498db;
-  border-radius: 4px;
+  margin-top: 12px;
+  padding: 14px;
+  background-color: rgba(37,99,235,0.06);
+  border-left: 4px solid var(--color-accent);
+  border-radius: 8px;
 }
 
 .telegram-help h4, .discord-help h4, .slack-help h4 {
-  margin: 0 0 10px 0;
-  color: #2980b9;
-  font-size: 0.9em;
+  margin: 0 0 8px 0;
+  color: var(--color-accent-2);
+  font-size: 0.95rem;
 }
 
 .telegram-help ol, .discord-help ol, .slack-help ol {
@@ -857,10 +905,13 @@ async function actionToggle() {
 
 .form-actions {
   display: flex;
-  gap: 15px;
-  padding-top: 30px;
-  border-top: 1px solid #ecf0f1;
-  margin-top: 30px;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(15,23,42,0.04);
+  margin-top: 14px;
+  align-items: center;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
 }
 
 .channels-grid {
@@ -898,23 +949,22 @@ async function actionToggle() {
   }
 }
 .channel-card {
-  background: white;
+  background: var(--color-surface);
   border-radius: 10px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow-1);
   padding: clamp(12px, 1.2vw, 20px);
-  border: 1px solid rgba(0,0,0,0.03);
+  border: 1px solid rgba(15,23,42,0.03);
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  /* ensure cards align in a row by keeping consistent minimum height */
   min-height: 150px;
 }
 
 .channel-card:hover {
-  border-color: rgba(52,152,219,0.18);
-  transform: translateY(-4px);
-  box-shadow: 0 10px 24px rgba(52,152,219,0.06);
+  border-color: rgba(37,99,235,0.14);
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-2);
 }
 
 .channel-card.channel-disabled {
@@ -944,22 +994,22 @@ async function actionToggle() {
 }
 
 .channel-type-badge.type-telegram {
-  background-color: #e3f2fd;
-  color: #1976d2;
+  background-color: rgba(37,99,235,0.08);
+  color: var(--color-accent-2);
 }
 
 .channel-type-badge.type-discord {
-  background-color: #ede7f6;
+  background-color: rgba(125,106,255,0.06);
   color: #5e35b1;
 }
 
 .channel-type-badge.type-slack {
-  background-color: #e8f5e8;
-  color: #388e3c;
+  background-color: rgba(16,185,129,0.06);
+  color: #10b981;
 }
 
 .channel-type-badge.type-webhook {
-  background-color: #fff3e0;
+  background-color: rgba(245,124,0,0.06);
   color: #f57c00;
 }
 
@@ -967,22 +1017,22 @@ async function actionToggle() {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background-color: #bdc3c7;
+  background-color: rgba(15,23,42,0.08);
   display: block;
 }
 
 .status-indicator.status-enabled {
-  background-color: #27ae60;
-  box-shadow: 0 0 8px rgba(39, 174, 96, 0.6);
+  background-color: var(--color-success);
+  box-shadow: 0 0 10px rgba(5,150,105,0.18);
 }
 
 .status-indicator.status-disabled {
-  background-color: #e74c3c;
+  background-color: var(--color-danger);
 }
 
 .channel-name {
   margin: 0 0 12px 0;
-  color: #2c3e50;
+  color: var(--color-text);
   font-size: clamp(1rem, 1.1vw, 1.1em);
   display: flex;
   align-items: center;
@@ -1001,9 +1051,8 @@ async function actionToggle() {
 .channel-details {
   margin-bottom: 16px;
   font-size: clamp(0.88rem, 0.9vw, 0.95rem);
-  color: #7f8c8d;
+  color: var(--color-muted);
   line-height: 1.45;
-  /* Reserve vertical space so cards with short details don't push buttons up */
   min-height: 44px;
 }
 
@@ -1084,12 +1133,13 @@ async function actionToggle() {
 }
 
 .btn-primary {
-  background-color: #3498db;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-2));
   color: white;
+  box-shadow: 0 8px 24px rgba(37,99,235,0.12);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #2980b9;
+  filter: brightness(0.98);
 }
 
 /* Header layout: stack title above the button (button below title) */
@@ -1218,6 +1268,38 @@ async function actionToggle() {
     text-align: center;
     margin-bottom: 0;
   }
+
+  /* Mobile header: improve contrast, layout and CTA appearance */
+  .page-header {
+    background: linear-gradient(90deg, var(--color-accent), var(--color-accent-2));
+    color: #ffffff;
+    box-shadow: 0 6px 20px rgba(12,17,23,0.08);
+  }
+
+  .page-header h1,
+  .page-header-inner h1 {
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  .page-header-inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .page-header-inner .btn {
+    background: #ffffff;
+    color: var(--color-accent-2);
+    border: none;
+    box-shadow: 0 6px 18px rgba(37,99,235,0.12);
+    padding: 8px 12px;
+    border-radius: 10px;
+    max-width: 180px;
+    width: auto;
+    align-self: center;
+  }
   
   .page-header .btn,
   .page-header-inner .btn {
@@ -1229,11 +1311,53 @@ async function actionToggle() {
   }
   
   .channel-form-container {
-    padding: 1rem;
+    padding: 0.5rem;
+    margin: 8px 0;
+    max-width: 100%;
+    width: 100%;
+    border-radius: 8px;
   }
   
   .channel-form {
-    padding: 1.25rem;
+    padding: 1rem;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  /* Improve spacing for checkbox label and form hints on mobile */
+  .checkbox-label {
+    gap: 12px;
+    align-items: center;
+  }
+
+  .form-hint {
+    margin-top: 10px;
+    display: block;
+    font-size: 0.95rem;
+    line-height: 1.35;
+  }
+
+  .form-checkbox {
+    margin-right: 6px;
+    flex: 0 0 auto;
+  }
+
+  /* Ensure sidebar column content collapses cleanly under the main column */
+  .channel-form > :not(.form-section) {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Make help boxes and form sections respect container width */
+  .form-section,
+  .telegram-help,
+  .discord-help,
+  .slack-help,
+  .webhook-help {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
   }
   
   .channel-form h2 {
@@ -1305,14 +1429,80 @@ async function actionToggle() {
   .page-header h1 {
     font-size: 1.25rem;
   }
+
+  /* Slightly smaller header CTA on very small screens and keep good contrast */
+  .page-header-inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .page-header-inner .btn {
+    max-width: 140px;
+    padding: 7px 10px;
+    font-size: 0.95rem;
+  }
   
   .channel-form-container {
-    padding: 0.75rem;
+    padding: 0.5rem;
+    margin: 6px 0;
+    max-width: 100%;
+    width: 100%;
+    border-radius: 8px;
   }
   
   .channel-form {
     padding: 1rem;
   }
+
+  /* Reduce inner spacing to maximize usable width on very small screens */
+  .channel-form h2 { margin-bottom: 8px; }
+  .form-group { margin-bottom: 10px; }
+
+  /* Ensure all inputs/selects/textareas never overflow their container */
+  .form-control,
+  select.form-control,
+  textarea.form-control {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    overflow-wrap: anywhere;
+  }
+
+  /* Tidy help box visuals so they don't push layout horizontally */
+  .telegram-help,
+  .discord-help,
+  .slack-help,
+  .webhook-help {
+    padding: 10px;
+    margin: 0;
+    border-left-width: 4px;
+    border-left-style: solid;
+    border-left-color: rgba(37,99,235,0.18);
+    background-color: rgba(37,99,235,0.04);
+    overflow: hidden;
+  }
+
+  /* Extra spacing for checkbox and hint on very small screens */
+  .checkbox-label {
+    gap: 14px;
+  }
+
+  .form-hint {
+    margin-top: 12px;
+    font-size: 0.95rem;
+    color: var(--color-muted);
+  }
+
+  .form-checkbox {
+    margin-right: 8px;
+  }
+
+  /* Prevent the action buttons area from overflowing horizontally */
+  .form-actions { padding-top: 10px; gap: 8px; }
+  .form-actions .btn { width: 100%; }
   
   .channel-form h2 {
     font-size: 1.125rem;

@@ -212,6 +212,7 @@ class SendNotification implements ShouldQueue
     {
         $baseInfo = [
             'monitor_name' => $this->monitor->name,
+            'group_name' => $this->monitor->group_name ?? null,
             'monitor_type' => $this->monitor->type,
             'target' => $this->monitor->target,
             'timestamp' => now()->toISOString(),
@@ -223,7 +224,8 @@ class SendNotification implements ShouldQueue
                     'status' => '🔴 DOWN',
                     'title' => "🚨 Monitor Down Alert",
                     'message' => "**{$this->monitor->name}** is DOWN!\n\n" .
-                               "🎯 **Target:** {$this->monitor->target}\n" .
+                                   (isset($this->monitor->group_name) && $this->monitor->group_name ? "📂 **Group:** {$this->monitor->group_name}\n" : "") .
+                                   "🎯 **Target:** {$this->monitor->target}\n" .
                                "⏰ **Time:** " . now()->format('Y-m-d H:i:s') . "\n" .
                                ($this->incident ? "📊 **Incident ID:** {$this->incident->id}\n" : "") .
                                "🔧 **Monitor Type:** {$this->monitor->type}",
@@ -237,7 +239,7 @@ class SendNotification implements ShouldQueue
                 return array_merge($baseInfo, [
                     'status' => '🚨 CRITICAL DOWN',
                     'title' => "🚨 CRITICAL SERVICE OUTAGE - IMMEDIATE ACTION REQUIRED",
-                    'message' => $message,
+                    'message' => (isset($this->monitor->group_name) && $this->monitor->group_name ? "📂 **Group:** {$this->monitor->group_name}\n\n" : "") . $message,
                     'color' => '#ff3742', // Bright Red
                     'priority' => 'critical',
                     'consecutive_failures' => $this->monitor->consecutive_failures,
@@ -251,7 +253,8 @@ class SendNotification implements ShouldQueue
                     'status' => '🟢 UP',
                     'title' => "✅ Monitor Recovered",
                     'message' => "**{$this->monitor->name}** is back UP!\n\n" .
-                               "🎯 **Target:** {$this->monitor->target}\n" .
+                                   (isset($this->monitor->group_name) && $this->monitor->group_name ? "📂 **Group:** {$this->monitor->group_name}\n" : "") .
+                                   "🎯 **Target:** {$this->monitor->target}\n" .
                                "⏰ **Recovered at:** " . now()->format('Y-m-d H:i:s') . "\n" .
                                "⏱️ **Downtime:** " . gmdate('H:i:s', $duration) . "\n" .
                                "🔧 **Monitor Type:** {$this->monitor->type}",
@@ -263,7 +266,8 @@ class SendNotification implements ShouldQueue
                     'status' => '🧪 TEST',
                     'title' => "🧪 Test Notification",
                     'message' => "This is a test notification from **{$this->monitor->name}**\n\n" .
-                               "🎯 **Target:** {$this->monitor->target}\n" .
+                                   (isset($this->monitor->group_name) && $this->monitor->group_name ? "📂 **Group:** {$this->monitor->group_name}\n" : "") .
+                                   "🎯 **Target:** {$this->monitor->target}\n" .
                                "⏰ **Test Time:** " . now()->format('Y-m-d H:i:s') . "\n" .
                                "✅ If you receive this, notifications are working correctly!",
                     'color' => '#3742fa', // Blue
@@ -313,12 +317,12 @@ class SendNotification implements ShouldQueue
         $payload = [
             'embeds' => [
                 [
-                    'title' => $message['title'],
+                    'title' => $message['title'] . (isset($message['group_name']) && $message['group_name'] ? " — {$message['group_name']}" : ''),
                     'description' => $message['message'],
                     'color' => hexdec(str_replace('#', '', $message['color'])),
                     'timestamp' => $message['timestamp'],
                     'footer' => [
-                        'text' => 'Uptime Monitor',
+                        'text' => 'Uptime Monitor' . (isset($message['group_name']) && $message['group_name'] ? " • {$message['group_name']}" : ''),
                     ],
                 ]
             ]
@@ -349,7 +353,9 @@ class SendNotification implements ShouldQueue
             'attachments' => [
                 [
                     'color' => $message['color'],
+                    'title' => $message['title'] . (isset($message['group_name']) && $message['group_name'] ? " — {$message['group_name']}" : ''),
                     'text' => $message['message'],
+                    'footer' => 'Uptime Monitor' . (isset($message['group_name']) && $message['group_name'] ? " • {$message['group_name']}" : ''),
                     'ts' => now()->timestamp,
                 ]
             ]

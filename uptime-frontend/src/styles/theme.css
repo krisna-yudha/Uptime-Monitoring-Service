@@ -1,0 +1,60 @@
+/* Global theme variables for the whole app
+   Use these variables in component styles to keep appearance consistent.
+*/
+:root {
+  /* Core colors */
+  --color-bg: #f3f4f6;
+  --color-surface: #ffffff;
+  --color-muted: #374151;
+  --color-text: #0f172a;
+
+  /* Accent / brand */
+  --color-accent: #2563eb;
+  --color-accent-2: #1d4ed8;
+
+  /* Status */
+  --color-success: #059669;
+  --color-danger: #dc2626;
+
+  /* Elevation / shadows */
+  --shadow-1: 0 6px 18px rgba(15,23,42,0.06);
+  --shadow-2: 0 18px 50px rgba(15,23,42,0.08);
+
+  /* Spacing scale */
+  --space-xs: 6px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 20px;
+
+  /* Border radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+}
+
+/* Global body styles to ensure consistent background and type rendering */
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  background: linear-gradient(180deg, #f8fafc, var(--color-bg));
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* Small helper utilities */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-2));
+  color: #fff;
+  border: none;
+}
+
+.muted { color: var(--color-muted); }
+.accent { color: var(--color-accent); }

@@ -717,29 +717,37 @@ const filteredGroupedMonitors = computed(() => {
     }
   }
   
-  // Apply global search filter - search in group names
+  // Apply global search filter - search in group names or monitors.
+  // If searching by monitor (name/target), only include the matching monitors
+  // inside each group so the grouped view shows relevant monitors instead
+  // of the whole group.
   if (filters.search && filters.search.trim() !== '') {
     const searchTerm = filters.search.toLowerCase()
     const filtered = {}
-    
+
     Object.keys(result).forEach(groupName => {
-      // Check if group name matches search
+      // If the group name matches the search, include the whole group
       if (groupName.toLowerCase().includes(searchTerm)) {
         filtered[groupName] = result[groupName]
-      } else {
-        // Check if any monitor in this group matches search
-        const matchingMonitors = result[groupName].monitors.filter(monitor => {
-          const nameMatch = monitor.name?.toLowerCase().includes(searchTerm)
-          const targetMatch = monitor.target?.toLowerCase().includes(searchTerm)
-          return nameMatch || targetMatch
-        })
-        
-        if (matchingMonitors.length > 0) {
-          filtered[groupName] = result[groupName]
+        return
+      }
+
+      // Otherwise filter monitors within the group by name/target
+      const matchingMonitors = (result[groupName].monitors || []).filter(monitor => {
+        const nameMatch = monitor.name?.toLowerCase().includes(searchTerm)
+        const targetMatch = monitor.target?.toLowerCase().includes(searchTerm)
+        return nameMatch || targetMatch
+      })
+
+      if (matchingMonitors.length > 0) {
+        // clone group object but replace monitors with only matching ones
+        filtered[groupName] = {
+          ...result[groupName],
+          monitors: matchingMonitors
         }
       }
     })
-    
+
     result = filtered
   }
   
@@ -1142,13 +1150,13 @@ onUnmounted(() => {
 
 .header-main h1 {
   margin: 0 0 5px 0;
-  color: #2c3e50;
+  color: var(--color-text);
   font-size: 2em;
 }
 
 .header-main p {
   margin: 0;
-  color: #7f8c8d;
+  color: var(--color-muted);
   font-size: 1.1em;
 }
 
@@ -1159,13 +1167,13 @@ onUnmounted(() => {
 }
 
 .form-container {
-  background: white;
+  background: var(--color-surface);
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
   margin-bottom: 32px;
   padding: 24px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(15,23,42,0.04);
 }
 /* Responsive grid for mobile & better padding/columns */
 .monitors-grid-view {
@@ -1320,9 +1328,9 @@ onUnmounted(() => {
 
 /* Filters */
 .filters {
-  background: #f8f9fa;
+  background: var(--color-bg);
   padding: 24px;
-  border: 1px solid #e9ecef;
+  border: 1px solid rgba(15,23,42,0.04);
   border-radius: 12px;
   margin-bottom: 24px;
   display: grid;
@@ -1354,10 +1362,10 @@ onUnmounted(() => {
 }
 
 .toggle-btn.active {
-  background: #007bff;
+  background: var(--color-accent);
   color: white;
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+  box-shadow: var(--shadow-1);
 }
 
 /* Grid View */
@@ -1372,7 +1380,7 @@ onUnmounted(() => {
 
 .monitor-card-grid {
   --card-accent: rgba(102,126,234,0.08);
-  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,252,255,0.95));
+  background: linear-gradient(180deg, var(--color-surface), rgba(250,252,255,0.95));
   border-radius: 16px;
   padding: 32px 30px;
   min-height: 220px;
@@ -1382,7 +1390,7 @@ onUnmounted(() => {
   gap: 14px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 18px 40px rgba(29,41,74,0.08);
+  box-shadow: var(--shadow-2);
   border: 1px solid var(--card-accent);
   transition: transform 0.28s cubic-bezier(.22,.9,.36,1), box-shadow 0.28s ease, border-color 0.28s ease;
   animation: fadeInUp 0.5s ease forwards;
@@ -1400,8 +1408,8 @@ onUnmounted(() => {
   bottom: 8px;
   width: 8px;
   border-radius: 8px 0 0 8px;
-  background: linear-gradient(180deg, rgba(102,126,234,0.9), rgba(102,126,234,0.35));
-  box-shadow: 0 6px 18px rgba(102,126,234,0.08);
+  background: linear-gradient(180deg, var(--color-accent), var(--color-accent-2));
+  box-shadow: 0 6px 18px rgba(29,41,74,0.06);
   transform-origin: left center;
   transition: transform .28s ease, opacity .28s ease;
 }
@@ -1475,7 +1483,7 @@ onUnmounted(() => {
 
 .monitor-info-grid h4 {
   margin: 0 0 5px 0;
-  color: #2c3e50;
+  color: var(--color-text);
   font-size: 1.35em;
   font-weight: 600;
 }
@@ -1563,15 +1571,15 @@ onUnmounted(() => {
 
 .monitor-target-grid {
   margin: 0 0 8px 0;
-  color: #495057;
+  color: var(--color-muted);
   font-size: 0.95em;
   word-break: break-word;
   display: none; /* hidden as requested */
 }
 
 .monitor-group-badge {
-  background: #e9ecef;
-  color: #495057;
+  background: rgba(15,23,42,0.03);
+  color: var(--color-muted);
   font-size: 0.8em;
   padding: 3px 8px;
   border-radius: 4px;
@@ -1583,7 +1591,7 @@ onUnmounted(() => {
   justify-content: space-between;
   margin-bottom: 15px;
   padding: 10px;
-  background: #f8f9fa;
+  background: var(--color-bg);
   border-radius: 6px;
 }
 
@@ -1596,7 +1604,7 @@ onUnmounted(() => {
 
 .stat-label {
   font-size: 0.75em;
-  color: #6c757d;
+  color: var(--color-muted);
   text-transform: uppercase;
   font-weight: 500;
 }
@@ -1604,7 +1612,7 @@ onUnmounted(() => {
 .stat-value {
   font-size: 0.85em;
   font-weight: 600;
-  color: #495057;
+  color: var(--color-text);
 }
 
 .monitor-actions-grid {
@@ -2091,8 +2099,8 @@ onUnmounted(() => {
   }
   
   .stats-cards {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
   }
   
   .filters {
@@ -2157,8 +2165,8 @@ onUnmounted(() => {
   }
   
   .stats-cards {
-    grid-template-columns: 1fr;
-    gap: 0.625rem;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
   }
   
   .stat-card {
@@ -2166,10 +2174,8 @@ onUnmounted(() => {
   }
 
   /* Responsive stat-card padding for mobile */
-  @media (max-width: 480px) {
-    .stat-card {
-      padding: 0.5rem;
-    }
+  .stat-card {
+    padding: 0.5rem;
   }
   .monitor-card {
     padding: 1rem;
@@ -2355,8 +2361,8 @@ onUnmounted(() => {
 /* Mobile-specific overrides: make stat cards a two-column grid and tighten spacing */
 @media (max-width: 480px) {
   .stats-cards {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
   }
 
   .stat-card {
