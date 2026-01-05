@@ -69,14 +69,14 @@ Kemudian buka browser di: **http://localhost:5173**
 ## 📋 Requirements
 
 ### Frontend Requirements
-- Node.js 20.19+ atau 22.12+
+- Node.js 18+ (recommended: 20.19+ or 22.12+)
 - npm atau yarn
 
 ### Backend Requirements
 - PHP 8.2+
 - PostgreSQL 14+
 - Composer
-- Node.js 20.19+ atau 22.12+ (untuk asset compilation)
+- Node.js 18+ (untuk asset compilation)
 
 ---
 
