@@ -8,6 +8,9 @@ use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\NotificationChannelController;
 use App\Http\Controllers\Api\MonitoringLogController;
 use App\Http\Controllers\Api\TelegramWebhookController;
+use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\UserManagementController;
+use App\Http\Controllers\Api\PublicMonitorController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -40,6 +43,13 @@ Route::prefix('auth')->group(function () {
 
 // Telegram Webhook (public - no auth required)
 Route::post('telegram/webhook', [TelegramWebhookController::class, 'webhook']);
+
+// Public Monitor Status Page (no auth required)
+Route::prefix('public/monitors')->group(function () {
+    Route::get('/', [PublicMonitorController::class, 'index']);
+    Route::get('/statistics', [PublicMonitorController::class, 'statistics']);
+    Route::get('/{id}', [PublicMonitorController::class, 'show']);
+});
 
 // Protected routes
 Route::middleware('auth:api')->group(function () {
@@ -81,7 +91,7 @@ Route::middleware('auth:api')->group(function () {
     Route::apiResource('monitor-checks', MonitorCheckController::class)->only(['index', 'show']);
 
     // Incidents routes
-    Route::apiResource('incidents', IncidentController::class)->only(['index', 'show', 'update']);
+    Route::apiResource('incidents', IncidentController::class)->only(['index', 'show', 'update', 'destroy']);
 
     // Monitoring logs routes
     Route::prefix('logs')->group(function () {
@@ -110,6 +120,22 @@ Route::middleware('auth:api')->group(function () {
         Route::post('{incident}/reopen', [IncidentController::class, 'reopen']);
         Route::post('{incident}/notes', [IncidentController::class, 'addNote']);
         Route::get('{incident}/alert-log', [IncidentController::class, 'getAlertLog']);
+    });
+
+    // Settings routes
+    Route::prefix('settings')->group(function () {
+        Route::get('/', [SettingsController::class, 'index']);
+        Route::put('/', [SettingsController::class, 'update']);
+        Route::post('aggregate', [SettingsController::class, 'runAggregation']);
+        Route::post('cleanup', [SettingsController::class, 'runCleanup']);
+    });
+
+    // User management routes (admin only)
+    Route::middleware('role:admin')->prefix('users')->group(function () {
+        Route::get('/', [UserManagementController::class, 'index']);
+        Route::post('/', [UserManagementController::class, 'store']);
+        Route::put('{id}', [UserManagementController::class, 'update']);
+        Route::delete('{id}', [UserManagementController::class, 'destroy']);
     });
 });
 

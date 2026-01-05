@@ -159,6 +159,26 @@
             </div>
           </div>
 
+          <!-- Clear Data Modal: confirmation before deleting -->
+          <div v-if="showClearModal" class="modal-overlay" @click.self="showClearModal = false">
+            <div class="modal">
+              <div class="modal-header">
+                <h3>⚠ Konfirmasi Clear Data</h3>
+                <button class="btn btn-secondary" @click="showClearModal = false">✖</button>
+              </div>
+              <div class="modal-body">
+                <p class="warning-text">Apakah Anda yakin ingin menghapus incident ini?</p>
+                <p class="warning-subtext">Tindakan ini tidak dapat dibatalkan.</p>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" @click="showClearModal = false">Batal</button>
+                <button class="btn btn-danger" :disabled="clearLoading" @click="confirmClearData">
+                  {{ clearLoading ? 'Menghapus...' : 'Ya, Hapus Data' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
         <ul class="incidents-list view-list">
           <li
             v-for="incident in filteredIncidents"
@@ -176,16 +196,24 @@
               <div class="col datetime">{{ formatDate(incident.started_at || incident.last_check_at || new Date()) }}</div>
               <div class="col message" :title="getIncidentMessage(incident)">{{ getIncidentMessage(incident) }}</div>
               <div class="col actions">
-                <a 
+                <!-- <a 
                   v-if="incident.monitor?.target" 
                   :href="incident.monitor.target" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   class="btn btn-secondary btn-sm btn-view-link"
-                  title="View"
+                  title="Visit Website"
                 >
                   <img src="https://img.icons8.com/?size=100&id=132&format=png&color=000000" alt="link" class="icon-link" />
-                </a>
+                </a> -->
+                
+                <router-link
+                  :to="`/incidents/${incident.id}`"
+                  class="btn btn-secondary btn-sm"
+                  title="View Incident Details"
+                >
+                  View
+                </router-link>
                 
                 <button
                   class="btn btn-warning btn-sm btn-action"
@@ -203,6 +231,14 @@
                   @click="openActionModal('resolved', incident.id)"
                 >
                   <img src="https://img.icons8.com/?size=100&id=3sGpukxLxwGk&format=png&color=000000" alt="resolved" class="icon-action" /> Selesai
+                </button>
+
+                <button
+                  class="btn btn-danger btn-sm btn-action"
+                  title="Clear Data"
+                  @click="openClearModal(incident.id)"
+                >
+                  <img src="https://img.icons8.com/?size=100&id=67884&format=png&color=000000" alt="clear" class="icon-action" /> Clear
                 </button>
               </div>
             </div>
@@ -292,6 +328,11 @@ const actionType = ref('') // 'pending' or 'resolved'
 const actionIncidentId = ref(null)
 const actionMessage = ref('')
 const actionLoading = ref(false)
+
+// Clear data modal state
+const showClearModal = ref(false)
+const clearIncidentId = ref(null)
+const clearLoading = ref(false)
 
 const pagesList = computed(() => {
   const last = pagination.value.last_page || 1
@@ -552,6 +593,38 @@ async function confirmAction() {
     }
   } finally {
     actionLoading.value = false
+  }
+}
+
+function openClearModal(incidentId) {
+  clearIncidentId.value = incidentId
+  showClearModal.value = true
+}
+
+async function confirmClearData() {
+  if (!clearIncidentId.value) return
+  clearLoading.value = true
+
+  try {
+    console.log('Clearing incident data:', clearIncidentId.value)
+    const response = await api.incidents.delete(clearIncidentId.value)
+    console.log('Clear response:', response)
+
+    if (response?.data && response.data.success) {
+      showClearModal.value = false
+      await fetchIncidents()
+    } else {
+      alert(response?.data?.message || 'Gagal menghapus incident')
+    }
+  } catch (err) {
+    console.error('Clear failed:', err)
+    if (err.code === 'ERR_NETWORK') {
+      alert('Server tidak dapat dijangkau. Pastikan Laravel server berjalan')
+    } else {
+      alert(`Terjadi kesalahan: ${err.response?.data?.message || err.message}`)
+    }
+  } finally {
+    clearLoading.value = false
   }
 }
 
@@ -921,11 +994,11 @@ async function retryConnection() {
 .list-row .col {
   padding: 6px 10px;
 }
-.list-header .name { flex: 2 1 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.list-header .status { flex: 0 0 120px; text-align: center; white-space: nowrap; }
-.list-header .datetime { flex: 0 0 220px; text-align: left; white-space: nowrap; }
-.list-header .message { flex: 1 1 260px; white-space: nowrap; }
-.list-header .actions { flex: 0 0 360px; text-align: right; white-space: nowrap; }
+.list-header .name { flex: 2 1 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-header .status { flex: 0 0 110px; text-align: center; white-space: nowrap; }
+.list-header .datetime { flex: 0 0 200px; text-align: left; white-space: nowrap; }
+.list-header .message { flex: 2 1 350px; white-space: nowrap; }
+.list-header .actions { flex: 0 0 360px; text-align: center; white-space: nowrap; }
 
 .list-row {
   display: flex;
@@ -934,20 +1007,20 @@ async function retryConnection() {
   padding: 10px 16px;
 }
 .list-row .name { 
-  flex: 2 1 260px; 
+  flex: 2 1 240px; 
   white-space: nowrap; 
   overflow: hidden; 
   text-overflow: ellipsis;
   align-self: center;
 }
 .list-row .status { 
-  flex: 0 0 120px; 
+  flex: 0 0 110px; 
   text-align: center; 
   white-space: nowrap;
   align-self: center;
 }
 .list-row .datetime { 
-  flex: 0 0 220px; 
+  flex: 0 0 200px; 
   text-align: left; 
   color: #6b7a86; 
   font-size: 0.95em; 
@@ -955,7 +1028,7 @@ async function retryConnection() {
   align-self: center;
 }
 .list-row .message { 
-  flex: 1 1 260px; 
+  flex: 2 1 350px; 
   color: #3b4a54;
   word-wrap: break-word;
   white-space: normal;
@@ -967,10 +1040,10 @@ async function retryConnection() {
   cursor: help;
 }
 .list-row .actions { 
-  flex: 0 0 280px; 
+  flex: 0 0 360px; 
   text-align: right; 
   display: flex; 
-  gap: 12px; 
+  gap: 6px; 
   justify-content: flex-end; 
   align-items: center;
   align-self: center;
@@ -1597,6 +1670,15 @@ async function retryConnection() {
   background-color: #229954;
 }
 
+.btn-danger {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #c0392b;
+}
+
 .btn-sm {
   padding: 6px 12px;
   font-size: 0.75em;
@@ -1682,6 +1764,100 @@ async function retryConnection() {
 
 .btn-action:disabled .icon-action {
   opacity: 0.6;
+}
+
+.btn-danger.btn-action:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  max-width: 500px;
+  width: 90%;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #2c3e50;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid #e8eaed;
+  background: #f8f9fa;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.9rem;
+}
+
+.warning-text {
+  font-size: 1rem;
+  color: #e74c3c;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+
+.warning-subtext {
+  font-size: 0.9rem;
+  color: #7f8c8d;
+  margin: 0;
 }
 
 /* Icon placeholders */

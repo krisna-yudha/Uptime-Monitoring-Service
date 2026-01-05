@@ -424,6 +424,16 @@
               Enable monitor immediately
             </label>
           </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input
+                v-model="form.is_public"
+                type="checkbox"
+                class="form-checkbox"
+              >
+              Make this monitor public (visible without login)
+            </label>
+          </div>
         </div>
 
         <!-- Submit Buttons -->
@@ -489,7 +499,8 @@ const form = reactive({
   notify_after_retries: 2,
   notification_channels: [],
   notifications_enabled: true,
-  enabled: true
+  enabled: true,
+  is_public: false
 })
 
 const config = reactive({

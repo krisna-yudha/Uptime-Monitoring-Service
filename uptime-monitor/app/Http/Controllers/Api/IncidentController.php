@@ -382,4 +382,38 @@ class IncidentController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Delete an incident
+     */
+    public function destroy(Incident $incident): JsonResponse
+    {
+        try {
+            Log::info('Deleting incident', [
+                'incident_id' => $incident->id,
+                'monitor_id' => $incident->monitor_id,
+                'status' => $incident->status
+            ]);
+
+            // Delete the incident
+            $incident->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Incident deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to delete incident', [
+                'incident_id' => $incident->id ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete incident: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

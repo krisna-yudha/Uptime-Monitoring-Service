@@ -260,6 +260,16 @@
             Enable Monitoring
           </label>
         </div>
+
+        <div class="form-group">
+          <label>
+            <input
+              type="checkbox"
+              v-model="form.is_public"
+            />
+            Make this monitor public (visible without login)
+          </label>
+        </div>
       </div>
 
       <div class="form-section">
@@ -343,6 +353,7 @@ const form = ref({
   timeout_seconds: 30,
   retry_count: 3,
   is_enabled: true,
+  is_public: false,
   
   // HTTP specific
   http_method: 'GET',

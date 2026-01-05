@@ -10,8 +10,12 @@ import CreateMonitorView from '../views/CreateMonitorView.vue'
 import EditMonitorView from '../views/EditMonitorView.vue'
 import NotificationChannelsView from '../views/NotificationChannelsView.vue'
 import IncidentsView from '../views/IncidentsView.vue'
+import IncidentDetailView from '../views/IncidentDetailView.vue'
 import LogsView from '../views/LogsView.vue'
 import GroupDetailView from '../views/GroupDetailView.vue'
+import SettingsView from '../views/SettingsView.vue'
+import UsersView from '../views/UsersView.vue'
+import PublicMonitorsView from '../views/PublicMonitorsView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -19,6 +23,18 @@ const router = createRouter({
     {
       path: '/',
       redirect: '/dashboard'
+    },
+    {
+      path: '/dashboard',
+      name: 'Dashboard',
+      component: DashboardView,
+      meta: { requiresAuth: false }
+    },
+    {
+      path: '/public',
+      name: 'PublicMonitors',
+      component: PublicMonitorsView,
+      meta: { requiresGuest: false, requiresAuth: false }
     },
     {
       path: '/login',
@@ -30,7 +46,7 @@ const router = createRouter({
       path: '/dashboard',
       name: 'Dashboard',
       component: DashboardView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: false }
     },
     {
       path: '/monitors',
@@ -71,6 +87,24 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/incidents/:id',
+      name: 'IncidentDetail',
+      component: IncidentDetailView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/settings',
+      name: 'Settings',
+      component: SettingsView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/users',
+      name: 'Users',
+      component: UsersView,
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
       path: '/logs',
       name: 'Logs',
       component: LogsView,
@@ -101,6 +135,9 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
   } else if (to.meta.requiresGuest && authStore.isAuthenticated) {
+    next('/dashboard')
+  } else if (to.meta.requiresAdmin && authStore.user?.role !== 'admin') {
+    alert('Access denied. Admin privileges required.')
     next('/dashboard')
   } else {
     next()

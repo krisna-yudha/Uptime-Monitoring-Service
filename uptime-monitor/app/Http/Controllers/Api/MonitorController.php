@@ -78,6 +78,7 @@ class MonitorController extends Controller
             'timeout_ms' => 'sometimes|integer|min:1000|max:30000',
             'retries' => 'sometimes|integer|min:1|max:5',
             'enabled' => 'sometimes|boolean',
+            'is_public' => 'sometimes|boolean',
             'config' => 'sometimes|array',
             'tags' => 'sometimes|array'
         ]);
@@ -237,6 +238,7 @@ class MonitorController extends Controller
             'timeout_ms' => 'sometimes|integer|min:1000|max:30000',
             'retries' => 'sometimes|integer|min:1|max:5',
             'enabled' => 'sometimes|boolean',
+            'is_public' => 'sometimes|boolean',
             'config' => 'sometimes|array',
             'tags' => 'sometimes|array'
         ]);

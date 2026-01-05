@@ -94,10 +94,36 @@ export default {
     getAll: (params = {}) => api.get('/incidents', { params }),
     getById: (id) => api.get(`/incidents/${id}`),
     update: (id, data) => api.put(`/incidents/${id}`, data),
+    markPending: (id, data = {}) => api.post(`/incidents/${id}/pending`, data),
+    markResolved: (id, data = {}) => api.post(`/incidents/${id}/resolved`, data),
     acknowledge: (id, data = {}) => api.post(`/incidents/${id}/acknowledge`, data),
     resolve: (id, data = {}) => api.post(`/incidents/${id}/resolve`, data),
     reopen: (id) => api.post(`/incidents/${id}/reopen`),
-    addNote: (id, data) => api.post(`/incidents/${id}/notes`, data)
+    addNote: (id, data) => api.post(`/incidents/${id}/notes`, data),
+    delete: (id) => api.delete(`/incidents/${id}`)
+  },
+
+  // Settings
+  settings: {
+    get: () => api.get('/settings'),
+    save: (data) => api.put('/settings', data),
+    runAggregation: (data) => api.post('/settings/aggregate', data),
+    runCleanup: (data) => api.post('/settings/cleanup', data)
+  },
+
+  // User Management
+  users: {
+    getAll: () => api.get('/users'),
+    create: (data) => api.post('/users', data),
+    update: (id, data) => api.put(`/users/${id}`, data),
+    delete: (id) => api.delete(`/users/${id}`)
+  },
+
+  // Public Monitors (no auth required)
+  publicMonitors: {
+    getAll: () => axios.get(`${api.defaults.baseURL}/public/monitors`),
+    getById: (id) => axios.get(`${api.defaults.baseURL}/public/monitors/${id}`),
+    getStatistics: () => axios.get(`${api.defaults.baseURL}/public/monitors/statistics`)
   },
 
   // Heartbeat (public endpoint)

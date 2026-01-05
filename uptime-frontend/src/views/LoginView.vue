@@ -4,6 +4,10 @@
     <div class="login-content">
       <div class="login-card">
         <div class="login-header">
+          <router-link to="/dashboard" class="back-to-dashboard">
+            <i class="fas fa-arrow-left"></i>
+            Back to Dashboard
+          </router-link>
           <div class="logo-section">
             <div class="logo-container">
               <div class="logo-icon">
@@ -215,6 +219,43 @@ html, body {
   text-align: center;
   position: relative;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
+}
+
+.back-to-dashboard {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: white;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 6px 10px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 100%);
+  border-radius: 8px;
+  backdrop-filter: blur(15px);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  z-index: 10;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.back-to-dashboard:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.15) 100%);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateX(-5px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.back-to-dashboard i {
+  font-size: 0.75rem;
+  transition: transform 0.3s ease;
+}
+
+.back-to-dashboard:hover i {
+  transform: translateX(-3px);
 }
 
 .login-footer {
@@ -1020,6 +1061,17 @@ html, body {
   .login-header {
     padding: 2rem 1.5rem 1.5rem 1.5rem;
   }
+
+  .back-to-dashboard {
+    top: 15px;
+    left: 15px;
+    padding: 5px 8px;
+    font-size: 0.7rem;
+  }
+
+  .back-to-dashboard i {
+    font-size: 0.7rem;
+  }
   
   .login-body {
     padding: 0 1.5rem 1.75rem 1.5rem; /* increased bottom padding on tablet */
@@ -1066,6 +1118,18 @@ html, body {
   
   .login-header {
     padding: 1.5rem 1.25rem 1.25rem 1.25rem;
+  }
+
+  .back-to-dashboard {
+    top: 12px;
+    left: 12px;
+    padding: 5px 8px;
+    font-size: 0.65rem;
+    gap: 4px;
+  }
+
+  .back-to-dashboard i {
+    font-size: 0.65rem;
   }
   
   .login-body {

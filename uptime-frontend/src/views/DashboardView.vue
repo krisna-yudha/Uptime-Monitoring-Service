@@ -7,10 +7,52 @@
       </div>
       <div class="header-status">
         <div class="user-info" v-if="currentUser">
-          <span class="user-avatar">{{ currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U' }}</span>
-          <div class="user-details">
-            <span class="user-name">{{ currentUser.name || 'Unknown User' }}</span>
-            <span class="user-role" :class="`role-${currentUser.role}`">{{ currentUser.role || 'user' }}</span>
+          <span class="welcome-text">Welcome, {{ currentUser.role || 'user' }}</span>
+        </div>
+        <router-link v-else to="/login" class="btn-login">
+          🔐 Login
+        </router-link>
+      </div>
+    </div>
+
+    <!-- Public Monitors Section -->
+    <div v-if="!currentUser" class="public-monitors-section">
+      <div class="section-header">
+        <h2>🌐 Public Status</h2>
+        <router-link to="/public" class="view-all-link">View All →</router-link>
+      </div>
+
+      <div v-if="loadingMonitors" class="loading-state">
+        Loading public monitors...
+      </div>
+
+      <div v-else-if="publicMonitors.length === 0" class="empty-state">
+        <p>No public monitors available</p>
+        <router-link to="/monitors" class="btn btn-primary">Go to Monitors</router-link>
+      </div>
+
+      <div v-else class="monitors-grid">
+        <div v-for="monitor in publicMonitors" :key="monitor.id" class="monitor-card" :class="`status-${monitor.status}`">
+          <div class="monitor-header">
+            <div class="monitor-status">
+              <span class="status-dot" :class="`status-${monitor.status}`"></span>
+              <span class="status-text">{{ monitor.status === 'up' ? 'Online' : 'Offline' }}</span>
+            </div>
+            <span class="monitor-type">{{ monitor.type?.toUpperCase() || 'HTTP' }}</span>
+          </div>
+          
+          <h3 class="monitor-name">{{ monitor.name }}</h3>
+          <p class="monitor-target">{{ monitor.target }}</p>
+          
+          <div class="monitor-stats">
+            <div class="stat-item">
+              <span class="stat-label">Uptime</span>
+              <span class="stat-value">{{ monitor.uptime_percentage || '0' }}%</span>
+            </div>
+            <div class="stat-item" v-if="monitor.last_check_at">
+              <span class="stat-label">Last Check</span>
+              <span class="stat-value">{{ formatLastCheck(monitor.last_check_at) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -20,8 +62,11 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import api from '../services/api'
 
 const userInfo = ref(null)
+const publicMonitors = ref([])
+const loadingMonitors = ref(true)
 
 // Computed property for current user
 const currentUser = computed(() => {
@@ -34,7 +79,7 @@ const currentUser = computed(() => {
   }
 })
 
-onMounted(() => {
+onMounted(async () => {
   // Load user from localStorage
   try {
     const stored = localStorage.getItem('user')
@@ -44,52 +89,81 @@ onMounted(() => {
   } catch (e) {
     console.error('Failed to load user info:', e)
   }
+
+  // Load public monitors
+  await loadPublicMonitors()
 })
+
+async function loadPublicMonitors() {
+  loadingMonitors.value = true
+  try {
+    const response = await api.publicMonitors.getAll()
+    if (response.data && response.data.success) {
+      // Get all monitors from groups and flatten them
+      const groups = response.data.data || []
+      publicMonitors.value = groups.flatMap(group => group.monitors || []).slice(0, 6) // Show max 6 monitors
+    }
+  } catch (err) {
+    console.error('Failed to load public monitors:', err)
+  } finally {
+    loadingMonitors.value = false
+  }
+}
+
+function formatLastCheck(dateString) {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays}d ago`
+}
 </script>
 
 <style scoped>
 .dashboard {
-  padding: 1rem;
-  max-width: auto;
+  padding: 2rem;
+  max-width: 1400px;
   margin: 0 auto;
-  height: 85vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
 }
 
 .dashboard-header {
-  margin-bottom: 0;
+  margin-bottom: 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 1rem;
-  width: 100%;
-  max-width: 900px;
+  padding: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.25);
+  color: white;
 }
 
 .header-main {
   flex: 1;
   min-width: 250px;
 }
+
 .header-main h1 {
   margin: 0 0 0.5rem 0;
-  color: #2c3e50;
+  color: white;
   font-size: clamp(1.8rem, 5vw, 2.5rem);
   font-weight: 700;
   line-height: 1.2;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .header-main p {
   margin: 0;
-  color: #7f8c8d;
+  color: rgba(255, 255, 255, 0.95);
   font-size: clamp(0.95rem, 3vw, 1.1rem);
   line-height: 1.5;
 }
@@ -104,94 +178,275 @@ onMounted(() => {
 .user-info {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  background: white;
-  padding: 0.5rem 1rem;
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.75rem 1.5rem;
   border-radius: 2rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  border: 2px solid #ecf0f1;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   transition: all 0.3s ease;
 }
 
 .user-info:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  background: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
 }
 
-.user-avatar {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.welcome-text {
+  font-weight: 700;
   color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
   font-size: 1rem;
-  flex-shrink: 0;
+  text-transform: capitalize;
+  letter-spacing: 0.5px;
 }
 
-.user-details {
+.btn-login {
+  padding: 0.75rem 1.5rem;
+  background: white;
+  color: #667eea;
+  text-decoration: none;
+  border-radius: 2rem;
+  font-weight: 700;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-login:hover {
+  background: #f8f9fa;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Public Monitors Section */
+.public-monitors-section {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #667eea;
+}
+
+.section-header h2 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.view-all-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.3s;
+}
+
+.view-all-link:hover {
+  color: #764ba2;
+  transform: translateX(4px);
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #6c757d;
+}
+
+.empty-state p {
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+}
+
+.btn {
+  padding: 12px 28px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  display: inline-block;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+/* Monitors Grid */
+.monitors-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.monitor-card {
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 2px solid #e8eaed;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.monitor-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-color: #667eea;
+}
+
+.monitor-card.status-up {
+  border-left: 5px solid #66bb6a;
+}
+
+.monitor-card.status-down {
+  border-left: 5px solid #ef5350;
+}
+
+.monitor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.monitor-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.status-dot.status-up {
+  background: #66bb6a;
+  box-shadow: 0 0 0 3px rgba(102, 187, 106, 0.2);
+}
+
+.status-dot.status-down {
+  background: #ef5350;
+  box-shadow: 0 0 0 3px rgba(239, 83, 80, 0.2);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.status-text {
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.monitor-card.status-up .status-text {
+  color: #43a047;
+}
+
+.monitor-card.status-down .status-text {
+  color: #e53935;
+}
+
+.monitor-type {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  background: #667eea;
+  color: white;
+  border-radius: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.monitor-name {
+  margin: 0 0 0.5rem 0;
+  color: #2c3e50;
+  font-size: 1.25rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-target {
+  margin: 0 0 1rem 0;
+  color: #6c757d;
+  font-size: 0.9rem;
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-stats {
+  display: flex;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e8eaed;
+}
+
+.stat-item {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  min-width: 0;
 }
 
-.user-name {
-  font-weight: 600;
-  color: #2c3e50;
-  font-size: 0.95rem;
-  line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.user-role {
-  font-size: 0.7rem;
-  padding: 0.25rem 0.625rem;
-  border-radius: 0.75rem;
-  font-weight: 600;
+.stat-label {
+  font-size: 0.75rem;
+  color: #6c757d;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  line-height: 1;
-  white-space: nowrap;
+  font-weight: 600;
 }
 
-.user-role.role-admin {
-  background: #e74c3c;
-  color: white;
-}
-
-.user-role.role-user {
-  background: #3498db;
-  color: white;
-}
-
-.user-role.role-moderator {
-  background: #f39c12;
-  color: white;
+.stat-value {
+  font-size: 1.1rem;
+  color: #2c3e50;
+  font-weight: 700;
 }
 
 /* Tablet and smaller */
 @media (max-width: 768px) {
   .dashboard {
     padding: 1rem;
-    padding-top: 5rem;
-    position: relative;
-    left: auto;
-    right: auto;
-    top: auto;
-    bottom: auto;
   }
   
   .dashboard-header {
     flex-direction: column;
     align-items: stretch;
     gap: 1rem;
-    margin-bottom: 0;
+    padding: 1.5rem;
   }
   
   .header-main h1 {
@@ -200,26 +455,14 @@ onMounted(() => {
   
   .header-status {
     justify-content: center;
-    gap: 0.625rem;
   }
   
-  .user-info {
-    padding: 0.5rem 1rem;
+  .monitors-grid {
+    grid-template-columns: 1fr;
   }
-  
-  .user-avatar {
-    width: 2rem;
-    height: 2rem;
-    font-size: 0.95rem;
-  }
-  
-  .user-name {
-    font-size: 0.85rem;
-  }
-  
-  .user-role {
-    font-size: 0.65rem;
-    padding: 0.2rem 0.5rem;
+
+  .public-monitors-section {
+    padding: 1.5rem;
   }
 }
 
@@ -227,37 +470,24 @@ onMounted(() => {
 @media (max-width: 480px) {
   .dashboard {
     padding: 0.75rem;
-    padding-top: 4.5rem;
-    position: relative;
-    left: auto;
-    right: auto;
-    top: auto;
-    bottom: auto;
   }
   
   .dashboard-header {
+    padding: 1.25rem;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
     gap: 0.75rem;
-    margin-bottom: 0;
   }
-  
-  .header-main h1 {
-    margin-bottom: 0.25rem;
+
+  .public-monitors-section {
+    padding: 1rem;
   }
-  
-  .header-status {
-    width: 100%;
-  }
-  
-  .user-info {
-    width: 100%;
-    justify-content: center;
-    padding: 0.5rem 0.875rem;
-  }
-  
-  .user-avatar {
-    width: 2rem;
-    height: 2rem;
-    font-size: 0.9rem;
+
+  .monitor-card {
+    padding: 1.25rem;
   }
 }
 </style>

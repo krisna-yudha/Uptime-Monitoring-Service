@@ -49,6 +49,27 @@
           <div class="nav-indicator"></div>
         </router-link>
       </li>
+      <li class="nav-item">
+        <router-link to="/settings" class="nav-link" active-class="active" :title="isCollapsed ? 'Settings' : ''" @click="closeMobileMenu">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-text" v-show="!isCollapsed">Settings</span>
+          <div class="nav-indicator"></div>
+        </router-link>
+      </li>
+      <li class="nav-item" v-if="authStore.user?.role === 'admin'">
+        <router-link to="/users" class="nav-link" active-class="active" :title="isCollapsed ? 'Users' : ''" @click="closeMobileMenu">
+          <span class="nav-icon">👥</span>
+          <span class="nav-text" v-show="!isCollapsed">Users</span>
+          <div class="nav-indicator"></div>
+        </router-link>
+      </li>
+      <!-- <li class="nav-item">
+        <router-link to="/public" class="nav-link" active-class="active" :title="isCollapsed ? 'Public Status' : ''" @click="closeMobileMenu">
+          <span class="nav-icon">🌐</span>
+          <span class="nav-text" v-show="!isCollapsed">Public Status</span>
+          <div class="nav-indicator"></div>
+        </router-link>
+      </li> -->
     </ul>
     
     <div class="navbar-user">
