@@ -14,6 +14,8 @@ http://localhost:5173
 
 **That's it! System is ready to use.** 🎉
 
+> **⚠️ Production Deployment:** For production environments, you MUST setup **Cron** and **Supervisor**. See [Production Deployment](#-production-deployment) section below.
+
 For detailed guide, see [QUICK_START.md](QUICK_START.md)
 
 ---
@@ -149,7 +151,106 @@ Both start automatically via `start-monitoring.bat`
 
 ---
 
-## 🔔 Notification Channels
+## � Production Deployment
+
+For production environments, you **MUST** configure Cron and Supervisor to ensure reliability.
+
+### 1. Setup Cron Job (Laravel Scheduler)
+
+Add this to your crontab (`crontab -e`):
+
+```bash
+* * * * * cd /path-to-your-project && php artisan schedule:run >> /dev/null 2>&1
+```
+
+This enables Laravel's scheduler which runs:
+- **Monitor checks** every second (`monitor:check`)
+- **Metrics aggregation** (minute/hour/day)
+- **Data cleanup** (daily at 2:00 AM)
+- **Log cleanup** (monthly)
+
+### 2. Setup Supervisor (Queue Workers)
+
+Install Supervisor:
+```bash
+sudo apt-get install supervisor
+```
+
+Create configuration file `/etc/supervisor/conf.d/uptime-monitor.conf`:
+
+```ini
+[program:uptime-monitor-checks]
+process_name=%(program_name)s_%(process_num)02d
+command=php /path-to-your-project/artisan worker:monitor-checks --verbose
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=www-data
+numprocs=2
+redirect_stderr=true
+stdout_logfile=/path-to-your-project/storage/logs/worker-monitor.log
+stopwaitsecs=3600
+
+[program:uptime-monitor-notifications]
+process_name=%(program_name)s_%(process_num)02d
+command=php /path-to-your-project/artisan worker:notifications --verbose
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=www-data
+numprocs=1
+redirect_stderr=true
+stdout_logfile=/path-to-your-project/storage/logs/worker-notifications.log
+stopwaitsecs=3600
+```
+
+Start Supervisor:
+```bash
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo supervisorctl start uptime-monitor-checks:*
+sudo supervisorctl start uptime-monitor-notifications:*
+```
+
+Check worker status:
+```bash
+sudo supervisorctl status
+```
+
+### 3. Additional Production Setup
+
+**Optimize Laravel:**
+```bash
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+composer install --optimize-autoloader --no-dev
+```
+
+**Set proper permissions:**
+```bash
+sudo chown -R www-data:www-data /path-to-your-project
+sudo chmod -R 755 /path-to-your-project
+sudo chmod -R 775 /path-to-your-project/storage
+sudo chmod -R 775 /path-to-your-project/bootstrap/cache
+```
+
+**Environment configuration (.env):**
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://your-domain.com
+
+QUEUE_CONNECTION=database
+LOG_CHANNEL=daily
+LOG_LEVEL=warning
+```
+
+---
+
+## �🔔 Notification Channels
 
 Supported notification types:
 - **Discord** - Webhook URL
@@ -175,6 +276,10 @@ Supported notification types:
 ## 📖 Documentation
 
 - [QUICK_START.md](QUICK_START.md) - Quick start guide
+- [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) - **Complete production setup guide**
+- [RESEARCH_AND_DEVELOPMENT.md](RESEARCH_AND_DEVELOPMENT.md) - **RnD guide for developers**
+- [ARCHITECTURE.md](ARCHITECTURE.md) - **System architecture & diagrams**
+- [DEVELOPER_QUICK_REFERENCE.md](DEVELOPER_QUICK_REFERENCE.md) - **Quick reference for developers**
 - [NOTIFICATION_SYSTEM_READY.md](NOTIFICATION_SYSTEM_READY.md) - Notification system docs
 - [TROUBLESHOOTING_NOTIFICATIONS.md](TROUBLESHOOTING_NOTIFICATIONS.md) - Troubleshooting
 - [WORKERS_README.md](WORKERS_README.md) - Worker documentation
