@@ -76,7 +76,7 @@ Kemudian buka browser di: **http://localhost:5173**
 - PHP 8.2+
 - PostgreSQL 14+
 - Composer
-- Node.js 18+ (untuk asset compilation)
+- Node.js 20.19+ atau 22.12+ (untuk asset compilation)
 
 ---
 
@@ -182,7 +182,7 @@ Frontend otomatis tersambung ke Backend jika kedua service berjalan di default p
 ## 🐛 Troubleshooting
 
 ### CORS Errors
-Jika ada error CORS, pastikan Backend sudah configure CORS di `config/cors.php`.
+Jika ada error CORS, pastikan Backend sudah dikonfigurasi CORS di `config/cors.php`.
 
 ### Connection Refused
 - Pastikan Backend berjalan di `http://localhost:8000`
