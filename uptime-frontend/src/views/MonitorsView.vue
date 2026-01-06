@@ -34,7 +34,7 @@
             <span>🖥️</span>
           </div>
           <div class="stat-content">
-            <h3>{{ filteredMonitors.length }}</h3>
+            <h3>{{ totalMonitors }}</h3>
             <p>Total Services</p>
           </div>
         </div>
@@ -675,28 +675,49 @@ const savingGroup = ref(false)
 let searchTimeout = null
 
 // Computed properties untuk stats
+const totalMonitors = computed(() => {
+  // Total all monitors without any filters
+  return monitorStore.monitors?.length || 0
+})
+
 const upMonitors = computed(() => {
-  return filteredMonitors.value.filter(monitor => monitor.last_status === 'up').length
+  // Count from all monitors, not filtered
+  return (monitorStore.monitors || []).filter(monitor => monitor.last_status === 'up').length
 })
 
 const downMonitors = computed(() => {
-  return filteredMonitors.value.filter(monitor => monitor.last_status === 'down').length
+  // Count from all monitors, not filtered
+  return (monitorStore.monitors || []).filter(monitor => monitor.last_status === 'down').length
 })
 
 const unknownMonitors = computed(() => {
-  return filteredMonitors.value.filter(monitor => 
+  // Count from all monitors, not filtered
+  return (monitorStore.monitors || []).filter(monitor => 
     monitor.last_status === 'unknown' || !monitor.last_status
   ).length
 })
 
 const totalGroups = computed(() => {
-  return Object.keys(filteredGroupedMonitors.value).length
+  // Count all unique groups from all monitors
+  if (!monitorStore.monitors || monitorStore.monitors.length === 0) return 0
+  
+  const uniqueGroups = new Set()
+  monitorStore.monitors.forEach(monitor => {
+    if (monitor.group_name) {
+      uniqueGroups.add(monitor.group_name)
+    } else {
+      uniqueGroups.add('Ungrouped')
+    }
+  })
+  return uniqueGroups.size
 })
 
 const overallHealth = computed(() => {
-  if (filteredMonitors.value.length === 0) return 0
+  // Calculate from all monitors, not filtered
+  const total = totalMonitors.value
+  if (total === 0) return 0
   const upCount = upMonitors.value
-  return Math.round((upCount / filteredMonitors.value.length) * 100)
+  return Math.round((upCount / total) * 100)
 })
 
 const overallHealthClass = computed(() => {
