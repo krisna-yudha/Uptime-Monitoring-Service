@@ -676,40 +676,51 @@ const savingGroup = ref(false)
 
 let searchTimeout = null
 
-// Computed properties untuk stats
+// Computed properties untuk stats - memastikan reaktivitas penuh
 const totalMonitors = computed(() => {
-  // Total all monitors without any filters
-  return monitorStore.monitors?.length || 0
+  // Force reactivity dengan mengakses array secara eksplisit
+  const monitors = monitorStore.monitors
+  if (!monitors || !Array.isArray(monitors)) return 0
+  return monitors.length
 })
 
 const upMonitors = computed(() => {
-  // Count from all monitors, not filtered
-  return (monitorStore.monitors || []).filter(monitor => monitor.last_status === 'up').length
+  // Force reactivity dengan mengakses array secara eksplisit
+  const monitors = monitorStore.monitors
+  if (!monitors || !Array.isArray(monitors)) return 0
+  return monitors.filter(monitor => monitor && monitor.last_status === 'up').length
 })
 
 const downMonitors = computed(() => {
-  // Count from all monitors, not filtered
-  return (monitorStore.monitors || []).filter(monitor => monitor.last_status === 'down').length
+  // Force reactivity dengan mengakses array secara eksplisit
+  const monitors = monitorStore.monitors
+  if (!monitors || !Array.isArray(monitors)) return 0
+  return monitors.filter(monitor => monitor && monitor.last_status === 'down').length
 })
 
 const unknownMonitors = computed(() => {
-  // Count from all monitors, not filtered
-  return (monitorStore.monitors || []).filter(monitor => 
-    monitor.last_status === 'unknown' || !monitor.last_status
+  // Force reactivity dengan mengakses array secara eksplisit
+  const monitors = monitorStore.monitors
+  if (!monitors || !Array.isArray(monitors)) return 0
+  return monitors.filter(monitor => 
+    monitor && (monitor.last_status === 'unknown' || !monitor.last_status)
   ).length
 })
 
 const totalGroups = computed(() => {
-  // Count all unique groups from all monitors (excluding ungrouped monitors)
-  if (!monitorStore.monitors || monitorStore.monitors.length === 0) return 0
+  // Force reactivity dengan mengakses array secara eksplisit
+  const monitors = monitorStore.monitors
+  if (!monitors || !Array.isArray(monitors) || monitors.length === 0) return 0
   
   const uniqueGroups = new Set()
-  monitorStore.monitors.forEach(monitor => {
+  monitors.forEach(monitor => {
     // Only count monitors that actually have a group name
-    if (monitor.group_name && monitor.group_name.trim() !== '') {
-      uniqueGroups.add(monitor.group_name)
+    if (monitor && monitor.group_name && typeof monitor.group_name === 'string' && monitor.group_name.trim() !== '') {
+      uniqueGroups.add(monitor.group_name.trim())
     }
   })
+  
+  console.log('Total Groups Computed:', uniqueGroups.size, 'from', monitors.length, 'monitors')
   return uniqueGroups.size
 })
 
@@ -718,7 +729,9 @@ const overallHealth = computed(() => {
   const total = totalMonitors.value
   if (total === 0) return 0
   const upCount = upMonitors.value
-  return Math.round((upCount / total) * 100)
+  const health = Math.round((upCount / total) * 100)
+  console.log('Overall Health:', health, '% (', upCount, '/', total, ')')
+  return health
 })
 
 const overallHealthClass = computed(() => {
@@ -731,13 +744,15 @@ const overallHealthClass = computed(() => {
 
 // Computed property for group filter options with accurate counts
 const groupFilterOptions = computed(() => {
-  if (!monitorStore.monitors || monitorStore.monitors.length === 0) return []
+  // Force reactivity dengan mengakses array secara eksplisit
+  const monitors = monitorStore.monitors
+  if (!monitors || !Array.isArray(monitors) || monitors.length === 0) return []
   
   // Count monitors per group from actual data
   const groupCounts = {}
-  monitorStore.monitors.forEach(monitor => {
-    if (monitor.group_name && monitor.group_name.trim() !== '') {
-      const groupName = monitor.group_name
+  monitors.forEach(monitor => {
+    if (monitor && monitor.group_name && typeof monitor.group_name === 'string' && monitor.group_name.trim() !== '') {
+      const groupName = monitor.group_name.trim()
       groupCounts[groupName] = (groupCounts[groupName] || 0) + 1
     }
   })
@@ -750,6 +765,7 @@ const groupFilterOptions = computed(() => {
       count: groupCounts[name]
     }))
   
+  console.log('Group Filter Options:', options.length, 'groups', options)
   return options
 })
 
