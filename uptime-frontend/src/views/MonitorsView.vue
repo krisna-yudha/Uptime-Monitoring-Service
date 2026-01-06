@@ -469,12 +469,6 @@
               </div>
             </div>
           </div>
-          <!-- Group pagination controls -->
-          <div class="group-pagination" v-if="getFilteredGroupMonitors(filteredGroupedMonitors[groupName].monitors, groupName).length > pageSize">
-            <button class="btn btn-sm" :disabled="(groupPages[groupName]||1) === 1" @click.stop="groupPagePrev(groupName)">Prev</button>
-            <span class="group-page-info">Halaman {{ groupPages[groupName]||1 }} / {{ getGroupTotalPages(getFilteredGroupMonitors(filteredGroupedMonitors[groupName].monitors, groupName)) }}</span>
-            <button class="btn btn-sm" :disabled="(groupPages[groupName]||1) >= getGroupTotalPages(getFilteredGroupMonitors(filteredGroupedMonitors[groupName].monitors, groupName))" @click.stop="groupPageNext(groupName, filteredGroupedMonitors[groupName].monitors)">Next</button>
-          </div>
         </div>
       </div>
       <!-- Groups pagination controls -->
