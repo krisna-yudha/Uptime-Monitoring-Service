@@ -700,15 +700,14 @@ const unknownMonitors = computed(() => {
 })
 
 const totalGroups = computed(() => {
-  // Count all unique groups from all monitors
+  // Count all unique groups from all monitors (excluding ungrouped monitors)
   if (!monitorStore.monitors || monitorStore.monitors.length === 0) return 0
   
   const uniqueGroups = new Set()
   monitorStore.monitors.forEach(monitor => {
-    if (monitor.group_name) {
+    // Only count monitors that actually have a group name
+    if (monitor.group_name && monitor.group_name.trim() !== '') {
       uniqueGroups.add(monitor.group_name)
-    } else {
-      uniqueGroups.add('Ungrouped')
     }
   })
   return uniqueGroups.size
