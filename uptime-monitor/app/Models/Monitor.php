@@ -31,6 +31,7 @@ class Monitor extends Model
         'is_public',
         'tags',
         'created_by',
+        'actual_created_by',
         'heartbeat_key',
         'last_status',
         'last_error',
@@ -71,23 +72,32 @@ class Monitor extends Model
     // Accessors
     public function getCreatedByNameAttribute(): ?string
     {
-        if ($this->relationLoaded('creator') && $this->creator) {
+        // Prioritize actual_created_by (the real admin who created it)
+        $userId = $this->actual_created_by ?? $this->created_by;
+        
+        if (!$userId) {
+            return null;
+        }
+        
+        // Check if relation is loaded and matches the user ID
+        if ($this->relationLoaded('creator') && $this->creator && $this->creator->id === $userId) {
             return $this->creator->name;
         }
         
-        // Fallback: load creator if not already loaded
-        if ($this->created_by) {
-            $creator = User::find($this->created_by);
-            return $creator ? $creator->name : null;
-        }
-        
-        return null;
+        // Load the actual creator
+        $creator = User::find($userId);
+        return $creator ? $creator->name : null;
     }
 
     // Relationships
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function actualCreator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'actual_created_by');
     }
 
     public function checks(): HasMany

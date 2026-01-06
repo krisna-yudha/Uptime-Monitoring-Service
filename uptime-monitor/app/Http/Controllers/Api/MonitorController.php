@@ -96,7 +96,19 @@ class MonitorController extends Controller
             $data['port'] = $data['port_number'];
         }
         unset($data['port_number']);
-        $data['created_by'] = auth('api')->id();
+        
+        // Handle admin shared ownership
+        $currentUser = auth('api')->user();
+        if ($currentUser->role === 'admin') {
+            // For admin users, set created_by to ID 1 (shared ownership)
+            // But keep actual_created_by as the real admin who created it
+            $data['created_by'] = 1; // Shared admin ownership
+            $data['actual_created_by'] = $currentUser->id; // Real creator
+        } else {
+            // For regular users, they own their monitors
+            $data['created_by'] = $currentUser->id;
+            $data['actual_created_by'] = null;
+        }
         
         // Set default interval to 1 second for realtime monitoring if not provided
         if (!isset($data['interval_seconds'])) {
@@ -172,7 +184,11 @@ class MonitorController extends Controller
     public function show(Monitor $monitor): JsonResponse
     {
         // Check if user can access this monitor
-        if (auth('api')->user()->role !== 'admin' && $monitor->created_by !== auth('api')->id()) {
+        $currentUser = auth('api')->user();
+        
+        // Admin can access all monitors (shared ownership via created_by = 1)
+        // Regular users can only access their own monitors
+        if ($currentUser->role !== 'admin' && $monitor->created_by !== $currentUser->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access'
@@ -181,6 +197,7 @@ class MonitorController extends Controller
 
         $monitor->load([
             'creator:id,name,email',
+            'actualCreator:id,name,email',
             'checks' => function ($query) {
                 $query->latest()->limit(10);
             },
@@ -201,7 +218,11 @@ class MonitorController extends Controller
     public function update(Request $request, Monitor $monitor): JsonResponse
     {
         // Check if user can update this monitor
-        if (auth('api')->user()->role !== 'admin' && $monitor->created_by !== auth('api')->id()) {
+        $currentUser = auth('api')->user();
+        
+        // Admin can update all monitors (shared ownership)
+        // Regular users can only update their own monitors
+        if ($currentUser->role !== 'admin' && $monitor->created_by !== $currentUser->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access'
@@ -273,7 +294,11 @@ class MonitorController extends Controller
     public function destroy(Monitor $monitor): JsonResponse
     {
         // Check if user can delete this monitor
-        if (auth('api')->user()->role !== 'admin' && $monitor->created_by !== auth('api')->id()) {
+        $currentUser = auth('api')->user();
+        
+        // Admin can delete all monitors (shared ownership)
+        // Regular users can only delete their own monitors
+        if ($currentUser->role !== 'admin' && $monitor->created_by !== $currentUser->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access'
