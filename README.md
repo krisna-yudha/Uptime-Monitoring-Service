@@ -6,7 +6,7 @@ Real-time service monitoring system dengan notifikasi otomatis melalui Discord, 
 
 ## 📂 Struktur Proyek
 
-Proyek ini terdiri dari dua komponen utama:
+Proyek ini terdiri dari dua komponen utama :
 
 ### 🎨 **Frontend (FE)** - Vue.js Application
 📁 **Lokasi**: [`/uptime-frontend`](./uptime-frontend)
