@@ -101,7 +101,7 @@ Kemudian buka browser di: **http://localhost:5173**
 ### Backend Documentation
 - [Backend README](./uptime-monitor/README.md) - Overview dan quick start
 - [Quick Start Guide](./uptime-monitor/QUICK_START.md) - Panduan memulai
-- [Production Deployment](./uptime-monitor/PRODUCTION_DEPLOYMENT.md) - Setup production
+- [Production Deployment](./uptime-monitor/docs/PRODUCTION_DEPLOYMENT.md) - Setup production
 - [Architecture](./uptime-monitor//ARCHITECTURE.md) - Arsitektur sistem
 - [Developer Reference](./uptime-monitor/DEVELOPER_QUICK_REFERENCE.md) - Referensi developer
 - [Workers Documentation](./uptime-monitor/WORKERS_README.md) - Dokumentasi workers
