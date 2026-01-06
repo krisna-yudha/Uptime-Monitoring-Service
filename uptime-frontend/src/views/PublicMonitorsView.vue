@@ -39,15 +39,15 @@
             v-for="monitor in group.monitors" 
             :key="monitor.id" 
             class="monitor-card"
-            :class="monitor.status"
+            :class="getStatusClass(monitor.status)"
             @click="viewDetails(monitor.id)"
           >
-            <div class="monitor-status-indicator" :class="monitor.status"></div>
+            <div class="monitor-status-indicator" :class="getStatusClass(monitor.status)"></div>
             
             <div class="monitor-header">
               <h3>{{ monitor.name }}</h3>
-              <span class="status-badge" :class="monitor.status">
-                {{ monitor.status === 'online' ? '✓ Online' : '✗ Offline' }}
+              <span class="status-badge" :class="getStatusClass(monitor.status)">
+                {{ isOnline(monitor.status) ? '✓ Online' : '✗ Offline' }}
               </span>
             </div>
 
@@ -87,11 +87,11 @@
         <div class="detail-content">
           <!-- Status Badge -->
           <div class="status-section">
-            <div class="current-status" :class="selectedMonitor?.status">
-              <div class="status-icon">{{ (selectedMonitor?.status === 'online' || selectedMonitor?.status === 'up') ? '✓' : '✗' }}</div>
+            <div class="current-status" :class="getStatusClass(selectedMonitor?.status)">
+              <div class="status-icon">{{ isOnline(selectedMonitor?.status) ? '✓' : '✗' }}</div>
               <div class="status-text">
                 <div class="status-title">Current Status</div>
-                <div class="status-value">{{ (selectedMonitor?.status === 'online' || selectedMonitor?.status === 'up') ? 'Online' : 'Offline' }}</div>
+                <div class="status-value">{{ isOnline(selectedMonitor?.status) ? 'Online' : 'Offline' }}</div>
               </div>
             </div>
             
@@ -281,6 +281,15 @@ function getPerformanceSummary() {
     return 'Lambat - Perlu Perhatian'
   }
   return 'Buruk - Sering Down'
+}
+
+// Helper functions to normalize status
+function isOnline(status) {
+  return status === 'up' || status === 'online'
+}
+
+function getStatusClass(status) {
+  return isOnline(status) ? 'online' : 'offline'
 }
 </script>
 

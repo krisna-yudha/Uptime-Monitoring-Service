@@ -32,11 +32,11 @@
       </div>
 
       <div v-else class="monitors-grid">
-        <div v-for="monitor in publicMonitors" :key="monitor.id" class="monitor-card" :class="`status-${monitor.status}`">
+        <div v-for="monitor in publicMonitors" :key="monitor.id" class="monitor-card" :class="`status-${getStatusClass(monitor.status)}`">
           <div class="monitor-header">
             <div class="monitor-status">
-              <span class="status-dot" :class="`status-${monitor.status}`"></span>
-              <span class="status-text">{{ monitor.status === 'up' ? 'Online' : 'Offline' }}</span>
+              <span class="status-dot" :class="`status-${getStatusClass(monitor.status)}`"></span>
+              <span class="status-text">{{ isOnline(monitor.status) ? 'Online' : 'Offline' }}</span>
             </div>
             <span class="monitor-type">{{ monitor.type?.toUpperCase() || 'HTTP' }}</span>
           </div>
@@ -123,6 +123,15 @@ function formatLastCheck(dateString) {
   if (diffHours < 24) return `${diffHours}h ago`
   const diffDays = Math.floor(diffHours / 24)
   return `${diffDays}d ago`
+}
+
+// Helper functions to normalize status
+function isOnline(status) {
+  return status === 'up' || status === 'online'
+}
+
+function getStatusClass(status) {
+  return isOnline(status) ? 'up' : 'down'
 }
 </script>
 
