@@ -120,6 +120,34 @@
         </form>
       </div>
     </div>
+
+    <!-- Custom Notification Toast -->
+    <div v-if="notification.show" class="notification-toast" :class="notification.type">
+      <div class="notification-content">
+        <span class="notification-icon">
+          {{ notification.type === 'success' ? '✓' : notification.type === 'error' ? '✕' : '⚠' }}
+        </span>
+        <span class="notification-message">{{ notification.message }}</span>
+        <button class="notification-close" @click="hideNotification">✕</button>
+      </div>
+    </div>
+
+    <!-- Confirmation Dialog -->
+    <div v-if="confirmDialog.show" class="modal-overlay" @click="handleCancel">
+      <div class="confirm-dialog" @click.stop>
+        <div class="confirm-header">
+          <span class="confirm-icon">⚠️</span>
+          <h3>Confirm Action</h3>
+        </div>
+        <div class="confirm-body">
+          <p>{{ confirmDialog.message }}</p>
+        </div>
+        <div class="confirm-footer">
+          <button class="btn btn-secondary" @click="handleCancel">Cancel</button>
+          <button class="btn btn-delete" @click="handleConfirm">Delete</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -133,6 +161,30 @@ const showModal = ref(false)
 const isEditing = ref(false)
 const error = ref(null)
 const users = ref([])
+
+// Custom notification state
+const notification = ref({
+  show: false,
+  message: '',
+  type: 'success' // 'success', 'error', 'warning'
+})
+
+function showNotification(message, type = 'success') {
+  notification.value = {
+    show: true,
+    message,
+    type
+  }
+  
+  // Auto hide after 3 seconds
+  setTimeout(() => {
+    notification.value.show = false
+  }, 3000)
+}
+
+function hideNotification() {
+  notification.value.show = false
+}
 
 const currentUserId = computed(() => {
   const user = JSON.parse(localStorage.getItem('user') || '{}')
@@ -160,7 +212,7 @@ async function loadUsers() {
     }
   } catch (err) {
     console.error('Failed to load users:', err)
-    alert('Failed to load users: ' + (err.response?.data?.message || err.message))
+    showNotification('Failed to load users: ' + (err.response?.data?.message || err.message), 'error')
   } finally {
     loading.value = false
   }
@@ -222,10 +274,10 @@ async function saveUser() {
 
     if (isEditing.value) {
       await api.users.update(formData.value.id, data)
-      alert('User updated successfully!')
+      showNotification('User updated successfully!', 'success')
     } else {
       await api.users.create(data)
-      alert('User created successfully!')
+      showNotification('User created successfully!', 'success')
     }
 
     closeModal()
@@ -242,20 +294,47 @@ async function saveUser() {
   }
 }
 
-async function confirmDeleteUser(user) {
-  if (confirm(`Are you sure you want to delete user "${user.name}"? This action cannot be undone.`)) {
-    await deleteUser(user.id)
+// Confirmation dialog state
+const confirmDialog = ref({
+  show: false,
+  message: '',
+  onConfirm: null
+})
+
+function showConfirmDialog(message, onConfirm) {
+  confirmDialog.value = {
+    show: true,
+    message,
+    onConfirm
   }
+}
+
+function handleConfirm() {
+  if (confirmDialog.value.onConfirm) {
+    confirmDialog.value.onConfirm()
+  }
+  confirmDialog.value.show = false
+}
+
+function handleCancel() {
+  confirmDialog.value.show = false
+}
+
+async function confirmDeleteUser(user) {
+  showConfirmDialog(
+    `Are you sure you want to delete user "${user.name}"? This action cannot be undone.`,
+    () => deleteUser(user.id)
+  )
 }
 
 async function deleteUser(id) {
   try {
     await api.users.delete(id)
-    alert('User deleted successfully!')
+    showNotification('User deleted successfully!', 'success')
     await loadUsers()
   } catch (err) {
     console.error('Failed to delete user:', err)
-    alert('Failed to delete user: ' + (err.response?.data?.message || err.message))
+    showNotification('Failed to delete user: ' + (err.response?.data?.message || err.message), 'error')
   }
 }
 
@@ -613,6 +692,173 @@ function formatDate(dateString) {
 
   .btn-small {
     width: 100%;
+  }
+}
+
+/* Custom Notification Toast */
+.notification-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  min-width: 320px;
+  max-width: 500px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  animation: slideInRight 0.3s ease-out;
+  border-left: 5px solid;
+}
+
+.notification-toast.success {
+  border-left-color: #66bb6a;
+}
+
+.notification-toast.error {
+  border-left-color: #ef5350;
+}
+
+.notification-toast.warning {
+  border-left-color: #ffa726;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  gap: 12px;
+}
+
+.notification-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.notification-toast.success .notification-icon {
+  background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
+  color: white;
+}
+
+.notification-toast.error .notification-icon {
+  background: linear-gradient(135deg, #ef5350 0%, #e53935 100%);
+  color: white;
+}
+
+.notification-toast.warning .notification-icon {
+  background: linear-gradient(135deg, #ffa726 0%, #fb8c00 100%);
+  color: white;
+}
+
+.notification-message {
+  flex: 1;
+  color: #2c3e50;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.notification-close {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.notification-close:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Confirmation Dialog */
+.confirm-dialog {
+  background: white;
+  border-radius: 16px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.confirm-header {
+  padding: 24px 32px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2px solid #e8eaed;
+}
+
+.confirm-icon {
+  font-size: 32px;
+}
+
+.confirm-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.confirm-body {
+  padding: 24px 32px;
+}
+
+.confirm-body p {
+  margin: 0;
+  color: #495057;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.confirm-footer {
+  padding: 16px 32px 24px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  .notification-toast {
+    top: 16px;
+    right: 16px;
+    left: 16px;
+    min-width: auto;
+  }
+  
+  .confirm-dialog {
+    width: 95%;
   }
 }
 </style>

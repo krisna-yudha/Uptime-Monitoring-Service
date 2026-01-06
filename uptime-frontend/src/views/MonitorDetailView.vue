@@ -26,6 +26,8 @@
             <span class="monitor-type-badge">{{ monitor?.type?.toUpperCase() }}</span>
             <span class="monitor-interval">Check every {{ monitor?.interval_seconds }}s</span>
             <span v-if="monitor?.group_name" class="monitor-group">📁 {{ monitor.group_name }}</span>
+            <span v-if="monitor?.created_by_name" class="monitor-creator">👤 Added by {{ monitor.created_by_name }}</span>
+            <span v-if="monitor?.created_at" class="monitor-created" :title="formatDateFull(monitor.created_at)">📅 {{ formatDateRelative(monitor.created_at) }}</span>
           </div>
         </div>
         <div class="monitor-status-section">
@@ -1461,6 +1463,32 @@ function formatDateTime(dateString) {
     second: '2-digit'
   })
 }
+
+function formatDateFull(dateString) {
+  if (!dateString) return ''
+  return new Date(dateString).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function formatDateRelative(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now - date
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 0) return 'Added today'
+  if (diffDays === 1) return 'Added yesterday'
+  if (diffDays < 7) return `Added ${diffDays} days ago`
+  if (diffDays < 30) return `Added ${Math.floor(diffDays / 7)} weeks ago`
+  if (diffDays < 365) return `Added ${Math.floor(diffDays / 30)} months ago`
+  return `Added ${Math.floor(diffDays / 365)} years ago`
+}
 </script>
 
 <style scoped>
@@ -1657,6 +1685,26 @@ function formatDateTime(dateString) {
   padding: 3px 8px;
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.monitor-creator {
+  color: #74b9ff;
+  font-size: 0.85rem;
+  background: rgba(116, 185, 255, 0.15);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(116, 185, 255, 0.3);
+  font-weight: 500;
+}
+
+.monitor-created {
+  color: #a29bfe;
+  font-size: 0.85rem;
+  background: rgba(162, 155, 254, 0.15);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(162, 155, 254, 0.3);
+  cursor: help;
 }
 
 .monitor-status-section {

@@ -64,6 +64,26 @@ class Monitor extends Model
         'last_error_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'created_by_name'
+    ];
+
+    // Accessors
+    public function getCreatedByNameAttribute(): ?string
+    {
+        if ($this->relationLoaded('creator') && $this->creator) {
+            return $this->creator->name;
+        }
+        
+        // Fallback: load creator if not already loaded
+        if ($this->created_by) {
+            $creator = User::find($this->created_by);
+            return $creator ? $creator->name : null;
+        }
+        
+        return null;
+    }
+
     // Relationships
     public function creator(): BelongsTo
     {
