@@ -5,7 +5,7 @@ Real-time service monitoring system with automatic bot notifications (Discord, T
 ## ⚡ Quick Start
 
 ```batch
-# Start all services (Laravel + Workers + Frontend)
+# Start all services ("Laravel + Workers + Frontend")
 start-monitoring.bat
 
 # Open browser
