@@ -98,8 +98,8 @@
           >
         <option value="">All Groups</option>
         <option value="ungrouped">Ungrouped</option>
-        <option v-for="group in groups" :key="group.name" :value="group.name">
-          {{ group.name }} ({{ group.monitor_count || 0 }})
+        <option v-for="group in groupFilterOptions" :key="group.name" :value="group.name">
+          {{ group.name }} ({{ group.count }})
         </option>
           </select>
           
@@ -727,6 +727,30 @@ const overallHealthClass = computed(() => {
   if (health >= 80) return 'health-good'
   if (health >= 50) return 'health-warning'
   return 'health-critical'
+})
+
+// Computed property for group filter options with accurate counts
+const groupFilterOptions = computed(() => {
+  if (!monitorStore.monitors || monitorStore.monitors.length === 0) return []
+  
+  // Count monitors per group from actual data
+  const groupCounts = {}
+  monitorStore.monitors.forEach(monitor => {
+    if (monitor.group_name && monitor.group_name.trim() !== '') {
+      const groupName = monitor.group_name
+      groupCounts[groupName] = (groupCounts[groupName] || 0) + 1
+    }
+  })
+  
+  // Create group options with counts, sorted by name
+  const options = Object.keys(groupCounts)
+    .sort((a, b) => a.localeCompare(b))
+    .map(name => ({
+      name: name,
+      count: groupCounts[name]
+    }))
+  
+  return options
 })
 
 // Computed property for client-side filtering
