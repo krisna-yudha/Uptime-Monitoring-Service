@@ -410,6 +410,14 @@ async function fetchMonitorData() {
         }
       })
       
+      // Handle notification channels - convert from backend format to array of IDs
+      if (monitor.notification_channels && Array.isArray(monitor.notification_channels)) {
+        // Backend returns array of channel IDs
+        form.value.notification_channel_ids = monitor.notification_channels
+      } else if (monitor.notification_channel_ids && Array.isArray(monitor.notification_channel_ids)) {
+        form.value.notification_channel_ids = monitor.notification_channel_ids
+      }
+      
       // Handle JSON fields
       if (monitor.http_headers) {
         form.value.http_headers = typeof monitor.http_headers === 'string' 
@@ -446,6 +454,9 @@ async function fetchMonitorData() {
           // ignore parse errors
         }
       }
+      
+      console.log('Monitor loaded:', monitor.name)
+      console.log('Notification channels attached:', form.value.notification_channel_ids)
     } else {
       error.value = result.message
     }

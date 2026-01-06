@@ -8,6 +8,73 @@
     <div v-if="loading" class="loading">Loading settings...</div>
     
     <div v-else class="settings-content">
+      <!-- Current Configuration Summary -->
+      <div class="settings-section info-section">
+        <div class="section-header">
+          <h2>📋 Current Configuration</h2>
+          <p>Overview of active aggregation and retention policies</p>
+        </div>
+
+        <div class="settings-card">
+          <div class="info-grid">
+            <!-- Aggregation Status -->
+            <div class="info-card">
+              <div class="info-header">
+                <div class="info-icon">📊</div>
+                <h3>Aggregation Status</h3>
+              </div>
+              <div class="info-content">
+                <div class="info-row">
+                  <span class="info-label">Auto Aggregation:</span>
+                  <span class="info-value" :class="settings.autoAggregate ? 'enabled' : 'disabled'">
+                    {{ settings.autoAggregate ? '✓ Enabled' : '✗ Disabled' }}
+                  </span>
+                </div>
+                <div class="info-row" v-if="settings.autoAggregate">
+                  <span class="info-label">Active Intervals:</span>
+                  <div class="interval-badges">
+                    <span v-if="settings.intervals.minute" class="interval-badge minute">Minute</span>
+                    <span v-if="settings.intervals.hour" class="interval-badge hour">Hour</span>
+                    <span v-if="settings.intervals.day" class="interval-badge day">Day</span>
+                    <span v-if="!settings.intervals.minute && !settings.intervals.hour && !settings.intervals.day" class="interval-badge none">None</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Retention Policy Summary -->
+            <div class="info-card">
+              <div class="info-header">
+                <div class="info-icon">🗄️</div>
+                <h3>Retention Policy</h3>
+              </div>
+              <div class="info-content">
+                <div class="info-row">
+                  <span class="info-label">Raw Checks:</span>
+                  <span class="info-value retention">{{ formatRetention(settings.retention.rawChecks, settings.retention.rawChecksUnit) }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Raw Logs:</span>
+                  <span class="info-value retention">{{ formatRetention(settings.retention.rawLogs, settings.retention.rawLogsUnit) }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Minute Aggregates:</span>
+                  <span class="info-value retention">{{ formatRetention(settings.retention.minuteAggregates, settings.retention.minuteAggregatesUnit) }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Hour Aggregates:</span>
+                  <span class="info-value retention">{{ formatRetention(settings.retention.hourAggregates, settings.retention.hourAggregatesUnit) }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Day Aggregates:</span>
+                  <span class="info-value retention">{{ formatRetention(settings.retention.dayAggregates, settings.retention.dayAggregatesUnit) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Aggregation Settings -->
       <div class="settings-section">
         <div class="section-header">
@@ -1095,6 +1162,161 @@ input:focus + .slider {
   60%, 100% { content: '...'; }
 }
 
+/* Info Section Styles */
+.info-section {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border: 3px solid #2196f3;
+}
+
+.info-section .section-header {
+  background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+  color: white;
+}
+
+.info-section .section-header::before {
+  background: linear-gradient(90deg, #64b5f6 0%, #42a5f5 50%, #2196f3 100%);
+}
+
+.info-section .section-header h2,
+.info-section .section-header p {
+  color: white;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+}
+
+.info-card {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  border: 3px solid #e3f2fd;
+  box-shadow: 0 4px 16px rgba(33, 150, 243, 0.1);
+}
+
+.info-card:hover {
+  border-color: #2196f3;
+  box-shadow: 0 8px 24px rgba(33, 150, 243, 0.2);
+}
+
+.info-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e3f2fd;
+}
+
+.info-icon {
+  font-size: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.info-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #1565c0;
+  font-weight: 700;
+}
+
+.info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-radius: 10px;
+  border: 2px solid #e8eaed;
+  transition: all 0.3s ease;
+}
+
+.info-row:hover {
+  border-color: #2196f3;
+  background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%);
+}
+
+.info-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #546e7a;
+}
+
+.info-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2c3e50;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: white;
+  border: 2px solid #e8eaed;
+}
+
+.info-value.enabled {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  color: #2e7d32;
+  border-color: #66bb6a;
+}
+
+.info-value.disabled {
+  background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+  color: #c62828;
+  border-color: #ef5350;
+}
+
+.info-value.retention {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  color: #1565c0;
+  border-color: #2196f3;
+}
+
+.interval-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.interval-badge {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 2px solid;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.interval-badge.minute {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  color: #1565c0;
+  border-color: #2196f3;
+}
+
+.interval-badge.hour {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  color: #2e7d32;
+  border-color: #66bb6a;
+}
+
+.interval-badge.day {
+  background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+  color: #6a1b9a;
+  border-color: #ab47bc;
+}
+
+.interval-badge.none {
+  background: linear-gradient(135deg, #fafafa 0%, #e0e0e0 100%);
+  color: #757575;
+  border-color: #bdbdbd;
+}
+
 @media (max-width: 768px) {
   .settings {
     padding: 16px;
@@ -1109,7 +1331,8 @@ input:focus + .slider {
   }
   
   .retention-grid,
-  .actions-grid {
+  .actions-grid,
+  .info-grid {
     grid-template-columns: 1fr;
   }
   
@@ -1133,6 +1356,17 @@ input:focus + .slider {
   
   .setting-control {
     width: 100%;
+  }
+  
+  .info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .info-value {
+    width: 100%;
+    text-align: center;
   }
 }
 </style>

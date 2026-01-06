@@ -80,43 +80,30 @@
     <div v-if="showDetailModal" class="modal-overlay" @click="closeDetailModal">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
-          <h2>📊 {{ detailData.monitor?.name }}</h2>
+          <h2>📊 {{ selectedMonitor?.name }}</h2>
           <button class="close-btn" @click="closeDetailModal">✕</button>
         </div>
 
-        <div v-if="loadingDetail" class="loading">Loading details...</div>
-
-        <div v-else class="detail-content">
-          <div class="detail-stats">
-            <div class="stat-box">
-              <div class="stat-number">{{ detailData.statistics?.uptime_24h }}%</div>
-              <div class="stat-name">24h Uptime</div>
+        <div class="detail-content">
+          <!-- Status Badge -->
+          <div class="status-section">
+            <div class="current-status" :class="selectedMonitor?.status">
+              <div class="status-icon">{{ (selectedMonitor?.status === 'online' || selectedMonitor?.status === 'up') ? '✓' : '✗' }}</div>
+              <div class="status-text">
+                <div class="status-title">Current Status</div>
+                <div class="status-value">{{ (selectedMonitor?.status === 'online' || selectedMonitor?.status === 'up') ? 'Online' : 'Offline' }}</div>
+              </div>
             </div>
-            <div class="stat-box">
-              <div class="stat-number">{{ detailData.statistics?.avg_response_time }}ms</div>
-              <div class="stat-name">Avg Response</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-number">{{ detailData.statistics?.successful_checks }}</div>
-              <div class="stat-name">Successful</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-number">{{ detailData.statistics?.failed_checks }}</div>
-              <div class="stat-name">Failed</div>
-            </div>
-          </div>
-
-          <div class="detail-chart">
-            <h3>Response Time (24 Hours)</h3>
-            <div class="chart-container">
-              <div 
-                v-for="(stat, index) in detailData.hourly_stats?.slice().reverse()" 
-                :key="index"
-                class="chart-bar"
-                :style="{ height: getBarHeight(stat.avg_response_time) + '%' }"
-                :title="`${formatHour(stat.period_start)}: ${stat.avg_response_time}ms (${stat.uptime_percentage}% uptime)`"
-              >
-                <div class="bar-value">{{ Math.round(stat.avg_response_time) }}</div>
+            
+            <!-- Performance Summary -->
+            <div class="performance-summary" :class="getPerformanceClass()">
+              <div class="summary-icon">{{ getPerformanceIcon() }}</div>
+              <div class="summary-text">
+                <div class="summary-title">Performance</div>
+                <div class="summary-value">
+                  <span v-if="loadingDetail">Loading...</span>
+                  <span v-else>{{ getPerformanceSummary() }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -141,6 +128,7 @@ const statistics = ref({
 })
 const showDetailModal = ref(false)
 const detailData = ref({})
+const selectedMonitor = ref(null)
 
 onMounted(async () => {
   await loadMonitors()
@@ -173,6 +161,17 @@ async function loadStatistics() {
 }
 
 async function viewDetails(id) {
+  // Find monitor from current list
+  for (const group of groups.value) {
+    const monitor = group.monitors.find(m => m.id === id)
+    if (monitor) {
+      selectedMonitor.value = { ...monitor }
+      console.log('Selected Monitor:', selectedMonitor.value)
+      console.log('Monitor Status:', selectedMonitor.value.status)
+      break
+    }
+  }
+  
   showDetailModal.value = true
   loadingDetail.value = true
   
@@ -180,6 +179,8 @@ async function viewDetails(id) {
     const response = await api.publicMonitors.getById(id)
     if (response.data && response.data.success) {
       detailData.value = response.data.data
+      console.log('API Response Monitor:', response.data.data.monitor)
+      // DO NOT merge monitor data - keep the original status from the list
     }
   } catch (err) {
     console.error('Failed to load detail:', err)
@@ -191,6 +192,7 @@ async function viewDetails(id) {
 function closeDetailModal() {
   showDetailModal.value = false
   detailData.value = {}
+  selectedMonitor.value = null
 }
 
 function formatDate(dateString) {
@@ -220,6 +222,65 @@ function getSSLClass(days) {
 function getBarHeight(responseTime) {
   const maxTime = Math.max(...(detailData.value.hourly_stats?.map(s => s.avg_response_time) || [100]))
   return (responseTime / maxTime) * 80 + 10
+}
+
+function getPerformanceClass() {
+  if (loadingDetail.value || !detailData.value?.statistics) return 'unknown'
+  
+  const avgResponse = detailData.value.statistics.avg_response_time || 0
+  const uptime = detailData.value.statistics.uptime_24h || 0
+  
+  if (isNaN(avgResponse) || isNaN(uptime) || uptime < 0 || uptime > 100) {
+    return 'unknown'
+  }
+  
+  if (uptime >= 99 && avgResponse > 0 && avgResponse < 500) return 'excellent'
+  if (uptime >= 95 && avgResponse > 0 && avgResponse < 1000) return 'good'
+  if (uptime >= 90 && avgResponse > 0 && avgResponse < 2000) return 'fair'
+  return 'poor'
+}
+
+function getPerformanceIcon() {
+  const perfClass = getPerformanceClass()
+  const icons = {
+    excellent: '🚀',
+    good: '✓',
+    fair: '⚠️',
+    poor: '⚠️',
+    unknown: '📊'
+  }
+  return icons[perfClass] || '📊'
+}
+
+function getPerformanceSummary() {
+  if (loadingDetail.value) {
+    return 'Loading...'
+  }
+  
+  if (!detailData.value?.statistics) {
+    return 'Data tidak tersedia'
+  }
+  
+  const avgResponse = detailData.value.statistics.avg_response_time || 0
+  const uptime = detailData.value.statistics.uptime_24h || 0
+  
+  if (isNaN(avgResponse) || isNaN(uptime) || uptime < 0 || uptime > 100) {
+    return 'Data tidak valid'
+  }
+  
+  if (uptime >= 99 && avgResponse > 0 && avgResponse < 500) {
+    return 'Sangat Baik - Cepat & Stabil'
+  }
+  if (uptime >= 95 && avgResponse > 0 && avgResponse < 1000) {
+    return 'Baik - Performa Normal'
+  }
+  if (uptime >= 90 && avgResponse > 0 && avgResponse < 2000) {
+    return 'Cukup - Sedikit Lambat'
+  }
+  if (avgResponse > 0 && avgResponse >= 2000) {
+    return 'Lambat - Perlu Perhatian'
+  }
+  return 'Buruk - Sering Down'
 }
 </script>
 
@@ -508,79 +569,97 @@ function getBarHeight(responseTime) {
   padding: 32px;
 }
 
-.detail-stats {
+.status-section {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 20px;
-  margin-bottom: 32px;
 }
 
-.stat-box {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.current-status,
+.performance-summary {
   padding: 24px;
   border-radius: 16px;
-  text-align: center;
-  color: white;
-  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
-}
-
-.stat-number {
-  font-size: 32px;
-  font-weight: 800;
-  margin-bottom: 8px;
-}
-
-.stat-name {
-  font-size: 13px;
-  opacity: 0.9;
-}
-
-.detail-chart {
-  background: #f8f9fa;
-  padding: 24px;
-  border-radius: 16px;
-}
-
-.detail-chart h3 {
-  margin: 0 0 20px 0;
-  font-size: 18px;
-  color: #2c3e50;
-}
-
-.chart-container {
   display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 200px;
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
-.chart-bar {
+.current-status.online,
+.current-status.up {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  border-left: 4px solid #66bb6a;
+}
+
+.current-status.offline,
+.current-status.down {
+  background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+  border-left: 4px solid #ef5350;
+}
+
+.performance-summary.excellent {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  border-left: 4px solid #66bb6a;
+}
+
+.performance-summary.good {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border-left: 4px solid #42a5f5;
+}
+
+.performance-summary.fair {
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  border-left: 4px solid #ffa726;
+}
+
+.performance-summary.poor {
+  background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+  border-left: 4px solid #ef5350;
+}
+
+.status-icon,
+.summary-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  background: rgba(255, 255, 255, 0.8);
+  flex-shrink: 0;
+}
+
+.current-status.online .status-icon,
+.current-status.up .status-icon {
+  color: #2e7d32;
+}
+
+.current-status.offline .status-icon,
+.current-status.down .status-icon {
+  color: #c62828;
+}
+
+.status-text,
+.summary-text {
   flex: 1;
-  background: linear-gradient(to top, #667eea 0%, #764ba2 100%);
-  border-radius: 4px 4px 0 0;
-  position: relative;
-  min-height: 10%;
-  cursor: pointer;
-  transition: all 0.3s ease;
 }
 
-.chart-bar:hover {
-  opacity: 0.8;
-  transform: translateY(-4px);
-}
-
-.bar-value {
-  position: absolute;
-  top: -20px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11px;
+.status-title,
+.summary-title {
+  font-size: 12px;
+  text-transform: uppercase;
   font-weight: 700;
-  color: #667eea;
-  white-space: nowrap;
+  color: #666;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.status-value,
+.summary-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: #2c3e50;
 }
 
 @media (max-width: 768px) {
@@ -611,6 +690,10 @@ function getBarHeight(responseTime) {
 
   .stat-value {
     font-size: 24px;
+  }
+
+  .status-section {
+    grid-template-columns: 1fr;
   }
 }
 </style>

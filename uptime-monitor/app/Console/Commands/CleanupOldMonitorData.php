@@ -29,11 +29,11 @@ class CleanupOldMonitorData extends Command
      * Data retention policy (in days)
      */
     protected $retentionPolicy = [
-        'raw_checks' => 7,      // Keep raw checks for 7 days
-        'raw_logs' => 30,       // Keep raw logs for 30 days
+        'raw_checks' => 30,      // Keep raw checks for 30 days
+        'raw_logs' => 30,        // Keep raw logs for 30 days
         'minute_aggregates' => 30,  // Keep minute aggregates for 30 days
-        'hour_aggregates' => 90,    // Keep hour aggregates for 90 days
-        'day_aggregates' => 365,    // Keep day aggregates for 1 year
+        'hour_aggregates' => 30,    // Keep hour aggregates for 30 days
+        'day_aggregates' => 30,     // Keep day aggregates for 30 days
     ];
 
     /**

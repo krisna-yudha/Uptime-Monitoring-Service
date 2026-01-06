@@ -25,16 +25,16 @@ class SettingsController extends Controller
                     'day' => true,
                 ],
                 'retention' => [
-                    'rawChecks' => 7,
+                    'rawChecks' => 30,
                     'rawChecksUnit' => 'days',
                     'rawLogs' => 30,
                     'rawLogsUnit' => 'days',
                     'minuteAggregates' => 30,
                     'minuteAggregatesUnit' => 'days',
-                    'hourAggregates' => 90,
+                    'hourAggregates' => 30,
                     'hourAggregatesUnit' => 'days',
-                    'dayAggregates' => 1,
-                    'dayAggregatesUnit' => 'years',
+                    'dayAggregates' => 30,
+                    'dayAggregatesUnit' => 'days',
                 ]
             ];
 

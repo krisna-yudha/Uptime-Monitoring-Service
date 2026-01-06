@@ -379,23 +379,24 @@
     <!-- Enhanced Grouped View -->
     <div v-if="viewMode === 'grouped' && !monitorStore.loading && !monitorStore.error" class="grouped-view">
       <div v-for="groupName in paginatedGroupKeys" :key="groupName" class="group-section">
-        <div
-          class="group-header clickable-header"
-          role="button"
-          tabindex="0"
-          @click="navigateToGroup(groupName)"
-          @keyup.enter="navigateToGroup(groupName)"
-          @keyup.space.prevent="navigateToGroup(groupName)"
-        >
-          <div class="group-title-section">
-              <h2 class="group-title">
-                <span v-if="groupName === 'Ungrouped'" class="group-icon">📂</span>
-                <span v-else class="group-icon">📁</span>
-                {{ groupName }}
-                <span class="monitor-count">({{ getFilteredGroupMonitors(filteredGroupedMonitors[groupName].monitors, groupName).length }})</span>
-              </h2>
-            <p v-if="filteredGroupedMonitors[groupName].description" class="group-description">{{ filteredGroupedMonitors[groupName].description }}</p>
-          </div>
+        <div class="group-header-wrapper">
+          <div
+            class="group-header clickable-header"
+            role="button"
+            tabindex="0"
+            @click="navigateToGroup(groupName)"
+            @keyup.enter="navigateToGroup(groupName)"
+            @keyup.space.prevent="navigateToGroup(groupName)"
+          >
+            <div class="group-title-section">
+                <h2 class="group-title">
+                  <span v-if="groupName === 'Ungrouped'" class="group-icon">📂</span>
+                  <span v-else class="group-icon">📁</span>
+                  {{ groupName }}
+                  <span class="monitor-count">({{ getFilteredGroupMonitors(filteredGroupedMonitors[groupName].monitors, groupName).length }})</span>
+                </h2>
+              <p v-if="filteredGroupedMonitors[groupName].description" class="group-description">{{ filteredGroupedMonitors[groupName].description }}</p>
+            </div>
           
           <div class="group-stats-enhanced">
             <div class="stat-item">
@@ -416,6 +417,17 @@
               <span class="stat-label">Health</span>
             </div>
           </div>
+        </div>
+          
+          <!-- Edit Group Button -->
+          <!-- <button 
+            v-if="groupName !== 'Ungrouped'"
+            @click.stop="openEditGroupModal(groupName, filteredGroupedMonitors[groupName])"
+            class="btn-edit-group"
+            title="Edit group name and description"
+          >
+            ✏️
+          </button> -->
         </div>
 
         <!-- Group Search
@@ -472,6 +484,7 @@
         <button class="btn btn-sm" :disabled="groupsPage >= totalGroupsPages" @click.stop="groupsNext">Next</button>
       </div>
     </div>
+
     <!-- Empty State -->
     <div v-if="!monitorStore.loading && !monitorStore.error && (!filteredMonitors.length && !Object.keys(filteredGroupedMonitors).length)" class="empty-state">
       <div class="empty-icon">📊</div>
@@ -524,6 +537,53 @@
   <div class="tooltip" ref="tooltip" style="display: none;">
     <div class="tooltip-content">
       <span class="tooltip-text"></span>
+    </div>
+  </div>
+
+  <!-- Edit Group Modal -->
+  <div v-if="showEditGroupModal" class="modal-overlay" @click="showEditGroupModal = false">
+    <div class="modal edit-group-modal" @click.stop>
+      <div class="modal-header">
+        <h3>✏️ Edit Group</h3>
+        <button @click="showEditGroupModal = false" class="btn-close">×</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="edit-group-name" class="form-label">Group Name:</label>
+          <input
+            id="edit-group-name"
+            v-model="editingGroup.name"
+            type="text"
+            class="form-control"
+            placeholder="Enter new group name"
+            required
+          >
+        </div>
+        
+        <div class="form-group">
+          <label for="edit-group-description" class="form-label">Description:</label>
+          <textarea
+            id="edit-group-description"
+            v-model="editingGroup.description"
+            class="form-control"
+            rows="3"
+            placeholder="Enter group description (optional)"
+          ></textarea>
+        </div>
+        
+        <div class="form-info">
+          <p class="info-text">💡 This will update the group name for all {{ editingGroup.monitorCount }} monitor(s) in this group.</p>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button @click="showEditGroupModal = false" class="btn btn-secondary">Cancel</button>
+        <button @click="saveGroupEdit" class="btn btn-primary" :disabled="savingGroup || !editingGroup.name || editingGroup.name.trim() === ''">
+          <span v-if="savingGroup">Saving...</span>
+          <span v-else>Save Changes</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -607,6 +667,16 @@ const deleting = ref(null)
 const refreshInterval = ref(null)
 const lastUpdate = ref(null)
 const filtersExpanded = ref(true)
+
+// Edit group state
+const showEditGroupModal = ref(false)
+const editingGroup = ref({
+  originalName: '',
+  name: '',
+  description: '',
+  monitorCount: 0
+})
+const savingGroup = ref(false)
 
 let searchTimeout = null
 
@@ -1066,6 +1136,134 @@ function clearFilters() {
   filters.search = ''
 }
 
+// Edit Group Functions
+function openEditGroupModal(groupName, groupData) {
+  const monitors = groupData.monitors || []
+  editingGroup.value = {
+    originalName: groupName,
+    name: groupName,
+    description: groupData.description || '',
+    monitorCount: monitors.length,
+    monitorsList: [...monitors]
+  }
+  console.log('Opening edit modal for:', groupName, 'with', monitors.length, 'monitors')
+  console.log('Current description:', groupData.description)
+  showEditGroupModal.value = true
+}
+
+async function saveGroupEdit() {
+  if (!editingGroup.value.name || editingGroup.value.name.trim() === '') {
+    alert('Group name is required')
+    return
+  }
+
+  const newGroupName = editingGroup.value.name.trim()
+  const originalGroupName = editingGroup.value.originalName
+  const newDescription = editingGroup.value.description.trim()
+  
+  // Check if there's any change
+  const nameChanged = newGroupName !== originalGroupName
+  
+  if (!nameChanged) {
+    alert('No changes detected. Group name is the same.')
+    showEditGroupModal.value = false
+    return
+  }
+
+  savingGroup.value = true
+
+  try {
+    // Use stored monitors list
+    const groupMonitors = editingGroup.value.monitorsList || []
+    
+    console.log('=== STARTING GROUP UPDATE ===')
+    console.log('From:', originalGroupName)
+    console.log('To:', newGroupName)
+    console.log('Description:', newDescription || '(empty)')
+    console.log('Monitors to update:', groupMonitors.length)
+    
+    if (groupMonitors.length === 0) {
+      alert('No monitors found in this group')
+      savingGroup.value = false
+      showEditGroupModal.value = false
+      return
+    }
+    
+    // Update each monitor one by one and track results
+    let successCount = 0
+    let failCount = 0
+    const errors = []
+    
+    for (const monitor of groupMonitors) {
+      try {
+        console.log(`Updating monitor ${monitor.id}: ${monitor.name}`)
+        
+        const updateData = {
+          group_name: newGroupName
+        }
+        
+        // Add description if it's provided
+        if (newDescription) {
+          updateData.group_description = newDescription
+        }
+        
+        const result = await monitorStore.updateMonitor(monitor.id, updateData)
+        
+        console.log(`Result for ${monitor.id}:`, result)
+        
+        if (result.success) {
+          successCount++
+          console.log(`✓ Monitor ${monitor.id} updated successfully`)
+        } else {
+          failCount++
+          errors.push(`${monitor.name}: ${result.message}`)
+          console.error(`✗ Monitor ${monitor.id} failed:`, result.message)
+        }
+      } catch (err) {
+        failCount++
+        errors.push(`${monitor.name}: ${err.message}`)
+        console.error(`✗ Monitor ${monitor.id} exception:`, err)
+      }
+    }
+    
+    console.log('=== UPDATE SUMMARY ===')
+    console.log('Success:', successCount)
+    console.log('Failed:', failCount)
+    
+    // Close modal
+    showEditGroupModal.value = false
+    
+    // Refresh grouped monitors
+    await fetchGroupedMonitors()
+    
+    // Show result
+    if (failCount === 0) {
+      let message = `Group updated successfully!\n${successCount} monitor(s) updated.`
+      if (nameChanged) {
+        message = `Group renamed from "${originalGroupName}" to "${newGroupName}"!\n${successCount} monitor(s) updated.`
+      }
+      if (newDescription) {
+        message += `\n\nDescription has been saved.`
+      }
+      alert(message)
+    } else {
+      alert(`Partially completed:\n${successCount} succeeded, ${failCount} failed.\n\nErrors:\n${errors.join('\n')}`)
+    }
+    
+  } catch (error) {
+    console.error('=== CRITICAL ERROR ===')
+    console.error(error)
+    if (error.response?.data) {
+      console.error('Server response:', error.response.data)
+      alert(`Failed to update group: ${error.response.data.message || JSON.stringify(error.response.data)}`)
+    } else {
+      alert(`Failed to update group: ${error.message}`)
+    }
+  } finally {
+    savingGroup.value = false
+  }
+}
+
 // Lifecycle
 onMounted(async () => {
   await fetchGroups()
@@ -1265,12 +1463,14 @@ onUnmounted(() => {
   position: relative;
   overflow: visible;
   box-sizing: border-box;
+  z-index: 1;
 }
 
 .stat-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.12);
   border-color: #d1d5db;
+  z-index: 10;
 }
 
 /* Keep stat-card stable on tap/click */
@@ -1772,6 +1972,37 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
+.group-header-wrapper {
+  position: relative;
+}
+
+.btn-edit-group {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(102, 126, 234, 0.1);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  color: #667eea;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  z-index: 5;
+}
+
+.btn-edit-group:hover {
+  background: rgba(102, 126, 234, 0.15);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.btn-edit-group:active {
+  transform: translateY(0);
+}
+
 .group-header {
   background: linear-gradient(135deg, #f8f9ff 0%, #f0f3ff 100%);
   color: #2c3e50;
@@ -1784,7 +2015,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 12px;
-  padding: 14px 20px;
+  padding: 14px 70px 14px 20px;
   position: relative;
   overflow: hidden;
 }
@@ -2063,11 +2294,55 @@ onUnmounted(() => {
   font-size: 0.9em;
 }
 
+.form-control:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
 .form-label {
   display: block;
   margin-bottom: 5px;
   font-weight: 500;
   color: #495057;
+}
+
+/* Edit Group Modal Styles */
+.edit-group-modal {
+  max-width: 500px;
+}
+
+.edit-group-modal .modal-body {
+  padding: 24px;
+}
+
+.edit-group-modal .form-group {
+  margin-bottom: 20px;
+}
+
+.edit-group-modal textarea.form-control {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-info {
+  background: #f0f7ff;
+  border-left: 4px solid #667eea;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-top: 16px;
+}
+
+.info-text {
+  margin: 0;
+  font-size: 0.9em;
+  color: #495057;
+  line-height: 1.5;
+}
+
+.modal-footer button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Empty State */

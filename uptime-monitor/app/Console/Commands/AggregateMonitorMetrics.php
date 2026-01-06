@@ -76,32 +76,58 @@ class AggregateMonitorMetrics extends Command
      */
     protected function aggregateMinutes(Monitor $monitor, ?string $date): int
     {
-        // Default: aggregate data from yesterday
-        $targetDate = $date ? Carbon::parse($date) : Carbon::yesterday();
-        
-        $periodStart = $targetDate->copy()->startOfDay();
-        $periodEnd = $targetDate->copy()->endOfDay();
-
-        $this->line("  Aggregating minutes for {$targetDate->format('Y-m-d')}...");
-
-        $count = 0;
-
-        // Loop through each minute of the day
-        $current = $periodStart->copy();
-        while ($current < $periodEnd) {
-            $minuteStart = $current->copy();
-            $minuteEnd = $current->copy()->addMinute();
-
-            $aggregated = $this->aggregatePeriod($monitor, $minuteStart, $minuteEnd, 'minute');
+        if ($date) {
+            // Manual run: aggregate entire day
+            $targetDate = Carbon::parse($date);
+            $periodStart = $targetDate->copy()->startOfDay();
+            $periodEnd = $targetDate->copy()->endOfDay();
             
-            if ($aggregated) {
-                $count++;
+            $this->line("  Aggregating minutes for {$targetDate->format('Y-m-d')}...");
+            
+            $count = 0;
+            $current = $periodStart->copy();
+            
+            while ($current < $periodEnd) {
+                $minuteStart = $current->copy();
+                $minuteEnd = $current->copy()->addMinute();
+                
+                // Skip if already aggregated
+                $exists = MonitorMetricAggregated::where('monitor_id', $monitor->id)
+                    ->where('interval', 'minute')
+                    ->where('period_start', $minuteStart)
+                    ->exists();
+                    
+                if (!$exists) {
+                    $aggregated = $this->aggregatePeriod($monitor, $minuteStart, $minuteEnd, 'minute');
+                    if ($aggregated) {
+                        $count++;
+                    }
+                }
+                
+                $current->addMinute();
             }
-
-            $current->addMinute();
+            
+            return $count;
+        } else {
+            // Scheduled run: aggregate the last completed minute
+            $minuteEnd = Carbon::now()->startOfMinute();
+            $minuteStart = $minuteEnd->copy()->subMinute();
+            
+            $this->line("  Aggregating minute: {$minuteStart->format('Y-m-d H:i')}");
+            
+            // Check if already aggregated
+            $exists = MonitorMetricAggregated::where('monitor_id', $monitor->id)
+                ->where('interval', 'minute')
+                ->where('period_start', $minuteStart)
+                ->exists();
+                
+            if ($exists) {
+                $this->line("  Already aggregated, skipping...");
+                return 0;
+            }
+            
+            return $this->aggregatePeriod($monitor, $minuteStart, $minuteEnd, 'minute') ? 1 : 0;
         }
-
-        return $count;
     }
 
     /**
@@ -109,32 +135,58 @@ class AggregateMonitorMetrics extends Command
      */
     protected function aggregateHours(Monitor $monitor, ?string $date): int
     {
-        // Default: aggregate data from last week
-        $targetDate = $date ? Carbon::parse($date) : Carbon::now()->subWeek();
-        
-        $periodStart = $targetDate->copy()->startOfDay();
-        $periodEnd = $targetDate->copy()->endOfDay();
-
-        $this->line("  Aggregating hours for {$targetDate->format('Y-m-d')}...");
-
-        $count = 0;
-
-        // Loop through each hour of the day
-        $current = $periodStart->copy();
-        while ($current < $periodEnd) {
-            $hourStart = $current->copy();
-            $hourEnd = $current->copy()->addHour();
-
-            $aggregated = $this->aggregatePeriod($monitor, $hourStart, $hourEnd, 'hour');
+        if ($date) {
+            // Manual run: aggregate entire day
+            $targetDate = Carbon::parse($date);
+            $periodStart = $targetDate->copy()->startOfDay();
+            $periodEnd = $targetDate->copy()->endOfDay();
             
-            if ($aggregated) {
-                $count++;
+            $this->line("  Aggregating hours for {$targetDate->format('Y-m-d')}...");
+            
+            $count = 0;
+            $current = $periodStart->copy();
+            
+            while ($current < $periodEnd) {
+                $hourStart = $current->copy();
+                $hourEnd = $current->copy()->addHour();
+                
+                // Skip if already aggregated
+                $exists = MonitorMetricAggregated::where('monitor_id', $monitor->id)
+                    ->where('interval', 'hour')
+                    ->where('period_start', $hourStart)
+                    ->exists();
+                    
+                if (!$exists) {
+                    $aggregated = $this->aggregatePeriod($monitor, $hourStart, $hourEnd, 'hour');
+                    if ($aggregated) {
+                        $count++;
+                    }
+                }
+                
+                $current->addHour();
             }
-
-            $current->addHour();
+            
+            return $count;
+        } else {
+            // Scheduled run: aggregate the last completed hour
+            $hourEnd = Carbon::now()->startOfHour();
+            $hourStart = $hourEnd->copy()->subHour();
+            
+            $this->line("  Aggregating hour: {$hourStart->format('Y-m-d H:00')}");
+            
+            // Check if already aggregated
+            $exists = MonitorMetricAggregated::where('monitor_id', $monitor->id)
+                ->where('interval', 'hour')
+                ->where('period_start', $hourStart)
+                ->exists();
+                
+            if ($exists) {
+                $this->line("  Already aggregated, skipping...");
+                return 0;
+            }
+            
+            return $this->aggregatePeriod($monitor, $hourStart, $hourEnd, 'hour') ? 1 : 0;
         }
-
-        return $count;
     }
 
     /**
@@ -142,13 +194,24 @@ class AggregateMonitorMetrics extends Command
      */
     protected function aggregateDays(Monitor $monitor, ?string $date): int
     {
-        // Default: aggregate data from last month
-        $targetDate = $date ? Carbon::parse($date) : Carbon::now()->subMonth();
+        // Default: aggregate yesterday's data (for scheduled runs)
+        $targetDate = $date ? Carbon::parse($date) : Carbon::yesterday();
         
         $dayStart = $targetDate->copy()->startOfDay();
         $dayEnd = $targetDate->copy()->endOfDay();
 
         $this->line("  Aggregating day for {$targetDate->format('Y-m-d')}...");
+        
+        // Check if already aggregated
+        $exists = MonitorMetricAggregated::where('monitor_id', $monitor->id)
+            ->where('interval', 'day')
+            ->where('period_start', $dayStart)
+            ->exists();
+            
+        if ($exists) {
+            $this->line("  Already aggregated, skipping...");
+            return 0;
+        }
 
         return $this->aggregatePeriod($monitor, $dayStart, $dayEnd, 'day') ? 1 : 0;
     }

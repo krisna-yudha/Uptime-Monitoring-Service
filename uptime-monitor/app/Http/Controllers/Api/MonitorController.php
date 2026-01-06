@@ -136,22 +136,19 @@ class MonitorController extends Controller
         $monitor = Monitor::create($data);
         $monitor->load('creator:id,name,email');
 
-        // Execute initial monitor check IMMEDIATELY (not queued) for instant feedback
-        // This will check status and SSL certificate (if HTTPS) right away
+        // Execute initial monitor check with timeout optimization
+        // Use queue with high priority for faster processing without blocking response
         try {
-            // Always run initial check synchronously on monitor creation for immediate feedback.
-            try {
-                \App\Jobs\ProcessMonitorCheck::dispatchSync($monitor);
-                Log::info('Initial monitor check executed synchronously (default)', ['monitor_id' => $monitor->id]);
-            } catch (\Exception $e) {
-                // If synchronous dispatch fails for any reason, fall back to queued dispatch.
-                try {
-                    \App\Jobs\ProcessMonitorCheck::dispatch($monitor)->afterCommit();
-                    Log::warning('Synchronous initial check failed; dispatched to queue as fallback', ['monitor_id' => $monitor->id, 'error' => $e->getMessage()]);
-                } catch (\Exception $inner) {
-                    Log::warning('Failed to dispatch initial monitor check (both sync and queue)', ['monitor_id' => $monitor->id, 'error' => $inner->getMessage()]);
-                }
-            }
+            // Dispatch to high-priority queue for immediate processing
+            \App\Jobs\ProcessMonitorCheck::dispatch($monitor)
+                ->onQueue('monitor-checks-priority')
+                ->afterCommit();
+            
+            Log::info('Initial monitor check dispatched to priority queue', [
+                'monitor_id' => $monitor->id,
+                'type' => $monitor->type,
+                'target' => $monitor->target
+            ]);
         } catch (\Exception $e) {
             // Log error but don't fail the creation
             Log::warning('Failed to dispatch initial monitor check', [
@@ -160,28 +157,11 @@ class MonitorController extends Controller
             ]);
         }
 
-        // Reload monitor to reflect any updates made by the immediate check
-        try {
-            $monitor->refresh();
-        } catch (\Exception $e) {
-            Log::info('Failed to refresh monitor after immediate check: ' . $e->getMessage(), ['monitor_id' => $monitor->id]);
-        }
-
-        // Load creator and the most recent check so frontend receives status + response immediately
-        try {
-            $monitor->load([
-                'creator:id,name,email',
-                'checks' => function ($q) {
-                    $q->latest()->limit(5);
-                }
-            ]);
-        } catch (\Exception $e) {
-            Log::debug('Failed to eager-load checks for monitor create response: ' . $e->getMessage(), ['monitor_id' => $monitor->id]);
-        }
-
+        // Return immediately without waiting for check to complete
+        // Frontend will refresh to get updated status
         return response()->json([
             'success' => true,
-            'message' => 'Monitor created successfully',
+            'message' => 'Monitor created successfully. Initial check is being processed.',
             'data' => $monitor
         ], 201);
     }
@@ -240,7 +220,9 @@ class MonitorController extends Controller
             'enabled' => 'sometimes|boolean',
             'is_public' => 'sometimes|boolean',
             'config' => 'sometimes|array',
-            'tags' => 'sometimes|array'
+            'tags' => 'sometimes|array',
+            'group_name' => 'sometimes|nullable|string|max:255',
+            'group_description' => 'sometimes|nullable|string'
         ]);
 
         if ($validator->fails()) {
