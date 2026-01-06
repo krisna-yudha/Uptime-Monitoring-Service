@@ -98,7 +98,9 @@
           >
         <option value="">All Groups</option>
         <option value="ungrouped">Ungrouped</option>
-        <!-- only show All Groups and Ungrouped as requested -->
+        <option v-for="group in groups" :key="group.name" :value="group.name">
+          {{ group.name }} ({{ group.monitor_count || 0 }})
+        </option>
           </select>
           
         </div>
@@ -1286,22 +1288,17 @@ onMounted(async () => {
   startAutoRefresh()
 })
 
-// Watch filters for reactivity
+// Watch filters for reactivity - reset pagination only, computed properties handle filtering
 watch(
   () => [filters.status, filters.type, filters.enabled, filters.group, filters.search],
   () => {
-    // reset pagination when filters change
+    // Reset pagination when filters change so user sees first page of results
     currentPage.value = 1
     groupsPage.value = 1
     Object.keys(groupPages).forEach(k => { groupPages[k] = 1 })
-    // Trigger data fetch when filters change
-    if (viewMode.value === 'grouped') {
-      fetchGroupedMonitors()
-    } else {
-      fetchData()
-    }
+    // No need to fetch - computed properties (filteredMonitors, filteredGroupedMonitors) are reactive
   },
-  { deep: true }
+  { deep: true, immediate: false }
 )
 
 // Watch view mode changes
