@@ -2013,11 +2013,12 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 12px;
-  padding: 14px 70px 14px 20px;
+  padding: 16px 20px;
   position: relative;
   overflow: hidden;
+  min-height: 80px;
 }
 
 .clickable-header {
@@ -2041,6 +2042,12 @@ onUnmounted(() => {
   border-radius: 6px;
 }
 
+.group-title-section {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .group-title-section h2 {
   margin: 0 0 5px 0;
   font-size: 1.3em;
@@ -2049,6 +2056,16 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   color: #2c3e50;
+  flex-wrap: wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.group-icon {
+  flex-shrink: 0;
 }
 
 .monitor-count {
@@ -2064,18 +2081,26 @@ onUnmounted(() => {
 .group-description {
   margin: 0;
   color: #6c757d;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+  line-height: 1.5;
   font-style: italic;
   font-size: 0.9em;
 }
 
 .group-stats-enhanced {
   display: flex;
-  gap: 20px;
+  gap: 16px;
   align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .group-stats-enhanced .stat-item {
   text-align: center;
+  min-width: 60px;
+  flex-shrink: 0;
 }
 
 .stat-number {
@@ -2083,6 +2108,7 @@ onUnmounted(() => {
   font-size: 1.5em;
   font-weight: bold;
   margin-bottom: 2px;
+  white-space: nowrap;
 }
 
 .stat-number.up {
@@ -2717,6 +2743,42 @@ onUnmounted(() => {
 }
 
 /* Mobile-specific overrides: make stat cards a two-column grid and tighten spacing */
+@media (max-width: 768px) {
+  .group-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .group-title-section {
+    width: 100%;
+  }
+
+  .group-title-section h2 {
+    font-size: 1.1em;
+  }
+
+  .group-stats-enhanced {
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .group-stats-enhanced .stat-item {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .stat-number {
+    font-size: 1.3em;
+  }
+
+  .stat-label {
+    font-size: 0.8em;
+  }
+}
+
 @media (max-width: 480px) {
   .stats-cards {
     grid-template-columns: repeat(3, 1fr);
