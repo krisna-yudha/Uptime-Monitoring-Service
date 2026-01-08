@@ -1038,7 +1038,7 @@ async function updateHistoryRealtime() {
           } catch (e) {}
           // Trigger chart update when new checks arrive
           try {
-            if (chartInstance.value) {
+            if (chartData.value) {
               // update chart using latest data points
               updateChartRealtime()
             } else {

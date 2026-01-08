@@ -519,12 +519,17 @@ async function submitForm() {
     if (result.success) {
       // Force trigger an immediate check after update to reflect changes
       try {
-        await api.monitors.triggerCheck(route.params.id)
-        console.log('✅ Monitor updated and immediate check triggered')
+        console.log('🔄 Triggering immediate check for monitor:', route.params.id)
+        const checkResult = await api.monitors.triggerCheck(route.params.id)
+        console.log('✅ Monitor updated and immediate check triggered:', checkResult)
       } catch (err) {
-        console.warn('Failed to trigger immediate check:', err)
+        console.error('❌ Failed to trigger immediate check:', err)
+        // Don't block navigation, but show warning
+        alert('Monitor updated but failed to trigger immediate check. New data may take a few seconds to appear.')
       }
       
+      // Small delay to allow check to be queued before navigation
+      await new Promise(resolve => setTimeout(resolve, 500))
       router.push(`/monitors/${route.params.id}`)
     } else {
       error.value = result.message || 'Failed to update monitor'

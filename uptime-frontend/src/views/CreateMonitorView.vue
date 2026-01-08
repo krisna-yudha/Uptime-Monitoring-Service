@@ -851,6 +851,16 @@ async function handleSubmit() {
     if (result.success) {
       // Await prefetch of the newly created monitor to ensure fresh data (SSL fields, checks) is available
       const created = result.data
+      
+      // Force trigger an immediate check for newly created monitor
+      try {
+        console.log('🔄 Triggering immediate check for new monitor:', created.id)
+        const checkResult = await monitorStore.api.monitors.triggerCheck(created.id)
+        console.log('✅ New monitor created and immediate check triggered:', checkResult)
+      } catch (err) {
+        console.error('❌ Failed to trigger immediate check for new monitor:', err)
+      }
+      
       try {
         const prefetch = await monitorStore.fetchMonitor(created.id, { _t: Date.now() })
         console.log('Prefetched monitor after create:', prefetch)
