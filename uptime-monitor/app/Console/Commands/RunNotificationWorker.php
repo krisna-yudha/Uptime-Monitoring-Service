@@ -15,9 +15,10 @@ class RunNotificationWorker extends Command
      */
     protected $signature = 'worker:notifications 
                             {--queue=notifications : The queue to listen on}
-                            {--sleep=3 : Number of seconds to sleep when no job is available}
+                            {--sleep=0 : Number of seconds to sleep when no job is available}
                             {--tries=3 : Number of times to attempt a job before logging it failed}
-                            {--timeout=60 : The number of seconds a child process can run}';
+                            {--timeout=120 : The number of seconds a child process can run}
+                            {--verbose : Display verbose output}';
 
     /**
      * The console command description.
@@ -59,8 +60,9 @@ class RunNotificationWorker extends Command
                 '--sleep' => $sleep,
                 '--tries' => $tries,
                 '--timeout' => $timeout,
-                '--verbose' => true,
+                '--verbose' => $this->option('verbose'),
                 '--name' => 'notification-worker',
+                '--max-jobs' => 1000,        // Restart after 1000 jobs to prevent memory leak
             ]);
         } catch (Exception $e) {
             $this->error('Worker stopped with error: ' . $e->getMessage());
