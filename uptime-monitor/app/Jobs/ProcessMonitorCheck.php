@@ -295,6 +295,37 @@ class ProcessMonitorCheck implements ShouldQueue
                 'status_changed' => $previousStatus !== $status,
             ]);
 
+            // Auto-requeue for next check (self-perpetuating monitoring)
+            // This ensures monitoring continues even if scheduler is not running
+            try {
+                $delay = $this->monitor->interval_seconds;
+                
+                // Refresh monitor to get latest state
+                $freshMonitor = Monitor::find($this->monitor->id);
+                
+                // Only requeue if monitor still exists, is enabled, and not paused
+                if ($freshMonitor && $freshMonitor->enabled) {
+                    $isPaused = $freshMonitor->pause_until && $freshMonitor->pause_until > now();
+                    
+                    if (!$isPaused && $freshMonitor->type !== 'push') {
+                        // Use delay to schedule next check based on interval
+                        ProcessMonitorCheck::dispatch($freshMonitor)
+                            ->delay(now()->addSeconds($delay));
+                        
+                        Log::info("Monitor auto-requeued for next check", [
+                            'monitor_id' => $freshMonitor->id,
+                            'delay_seconds' => $delay,
+                            'next_check_at' => now()->addSeconds($delay)->toDateTimeString()
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning("Failed to auto-requeue monitor", [
+                    'monitor_id' => $this->monitor->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
         } finally {
             // Always release the advisory lock
             if ($lockAcquired) {
