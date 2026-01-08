@@ -97,6 +97,43 @@ class MonitorController extends Controller
         }
         unset($data['port_number']);
         
+        // Merge port into target if provided
+        if (isset($data['port']) && $data['port']) {
+            $target = $data['target'];
+            $port = $data['port'];
+            
+            if ($data['type'] === 'tcp' || $data['type'] === 'port') {
+                // For TCP: format as host:port
+                $targetParts = explode(':', $target);
+                $host = $targetParts[0];
+                $data['target'] = $host . ':' . $port;
+            } elseif ($data['type'] === 'http' || $data['type'] === 'https') {
+                // For HTTP/HTTPS: ensure URL has port
+                // Parse URL to add port properly
+                if (!preg_match('/^https?:\/\//', $target)) {
+                    // Add protocol if missing
+                    $target = ($data['type'] === 'https' ? 'https://' : 'http://') . $target;
+                }
+                
+                $urlParts = parse_url($target);
+                if ($urlParts) {
+                    $scheme = $urlParts['scheme'] ?? ($data['type'] === 'https' ? 'https' : 'http');
+                    $host = $urlParts['host'] ?? $target;
+                    $path = $urlParts['path'] ?? '';
+                    $query = isset($urlParts['query']) ? '?' . $urlParts['query'] : '';
+                    
+                    $data['target'] = $scheme . '://' . $host . ':' . $port . $path . $query;
+                }
+            }
+            
+            Log::info('Merged port into target', [
+                'type' => $data['type'],
+                'port' => $port,
+                'original_target' => $target,
+                'merged_target' => $data['target']
+            ]);
+        }
+        
         // Handle admin shared ownership
         $currentUser = auth('api')->user();
         if ($currentUser->role === 'admin') {
@@ -259,6 +296,45 @@ class MonitorController extends Controller
             $data['port'] = $data['port_number'];
         }
         unset($data['port_number']);
+        
+        // Merge port into target if provided
+        if (isset($data['port']) && $data['port']) {
+            $monitorType = $data['type'] ?? $monitor->type;
+            $target = $data['target'] ?? $monitor->target;
+            $port = $data['port'];
+            
+            if ($monitorType === 'tcp' || $monitorType === 'port') {
+                // For TCP: format as host:port
+                $targetParts = explode(':', $target);
+                $host = $targetParts[0];
+                $data['target'] = $host . ':' . $port;
+            } elseif ($monitorType === 'http' || $monitorType === 'https') {
+                // For HTTP/HTTPS: ensure URL has port
+                // Parse URL to add port properly
+                if (!preg_match('/^https?:\/\//', $target)) {
+                    // Add protocol if missing
+                    $target = ($monitorType === 'https' ? 'https://' : 'http://') . $target;
+                }
+                
+                $urlParts = parse_url($target);
+                if ($urlParts) {
+                    $scheme = $urlParts['scheme'] ?? ($monitorType === 'https' ? 'https' : 'http');
+                    $host = $urlParts['host'] ?? $target;
+                    $path = $urlParts['path'] ?? '';
+                    $query = isset($urlParts['query']) ? '?' . $urlParts['query'] : '';
+                    
+                    $data['target'] = $scheme . '://' . $host . ':' . $port . $path . $query;
+                }
+            }
+            
+            Log::info('Merged port into target on update', [
+                'monitor_id' => $monitor->id,
+                'type' => $monitorType,
+                'port' => $port,
+                'original_target' => $target,
+                'merged_target' => $data['target']
+            ]);
+        }
 
         $monitor->update($data);
         $monitor->load('creator:id,name,email');
