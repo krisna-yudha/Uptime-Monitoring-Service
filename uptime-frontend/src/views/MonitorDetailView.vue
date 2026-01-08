@@ -386,6 +386,9 @@ const statsData = computed(() => {
   const uptime7d = getUptimeValue(168) // 7 days = 168 hours
   const uptime1m = getUptimeValue(720) // 30 days = 720 hours
   
+  // Calculate average response time for 1 hour
+  const avgResponse1h = getAverageResponse(1)
+  
   return [
     {
       key: 'response',
@@ -403,11 +406,15 @@ const statsData = computed(() => {
     {
       key: 'avg_response',
       header: 'Avg. Response',
-      subheader: '(24-hour)',
-      value: '150.50 ms',
+      subheader: '(1-hour)',
+      value: avgResponse1h,
       valueClass: 'response-value',
       loading: false,
-      trend: { direction: 'up', icon: '↗', text: 'Improving' }
+      trend: avgResponse1h !== 'N/A' ? {
+        direction: parseFloat(avgResponse1h) < 200 ? 'up' : 'down',
+        icon: parseFloat(avgResponse1h) < 200 ? '↗' : '↘',
+        text: parseFloat(avgResponse1h) < 200 ? 'Improving' : 'Degrading'
+      } : null
     },
     {
       key: 'uptime_24h',
@@ -528,6 +535,32 @@ watch(() => monitor.value, async (newVal) => {
     await fetchChartData()
   }
 }, { deep: false })
+
+// Helper functions for average response time calculation
+function getAverageResponse(hours = 1) {
+  if (!monitor.value) return 'N/A'
+  
+  // Get checks from allStatusHistory if available
+  if (!allStatusHistory.value || allStatusHistory.value.length === 0) {
+    return 'N/A'
+  }
+  
+  // Filter checks within the time period and with valid response times
+  const cutoffTime = new Date(Date.now() - (hours * 60 * 60 * 1000))
+  const recentChecks = allStatusHistory.value.filter(check => {
+    if (!check.checked_at || !check.response_time) return false
+    const checkTime = new Date(check.checked_at)
+    return checkTime >= cutoffTime && check.status === 'up'
+  })
+  
+  if (recentChecks.length === 0) return 'N/A'
+  
+  // Calculate average
+  const sum = recentChecks.reduce((acc, check) => acc + parseFloat(check.response_time), 0)
+  const average = sum / recentChecks.length
+  
+  return `${average.toFixed(2)} ms`
+}
 
 // Helper functions for uptime calculation
 function getUptimeValue(periodHours) {

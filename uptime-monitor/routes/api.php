@@ -80,6 +80,7 @@ Route::middleware('auth:api')->group(function () {
     Route::prefix('monitors/{monitor}')->group(function () {
         Route::post('pause', [MonitorController::class, 'pause']);
         Route::post('resume', [MonitorController::class, 'resume']);
+        Route::post('check', [MonitorController::class, 'triggerCheck']);
     });
 
     // Notification channels routes

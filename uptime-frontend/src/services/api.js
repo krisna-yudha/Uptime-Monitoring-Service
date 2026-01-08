@@ -56,6 +56,7 @@ export default {
     delete: (id) => api.delete(`/monitors/${id}`),
     pause: (id, duration) => api.post(`/monitors/${id}/pause`, { duration_minutes: duration }),
     resume: (id) => api.post(`/monitors/${id}/resume`),
+    triggerCheck: (id) => api.post(`/monitors/${id}/check`),
     getGroups: () => api.get('/monitors/groups'),
     getGrouped: (params = {}) => api.get('/monitors/grouped', { params }),
     bulkAction: (data) => api.post('/monitors/bulk-action', data)

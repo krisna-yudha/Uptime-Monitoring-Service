@@ -517,6 +517,14 @@ async function submitForm() {
     const result = await monitorStore.updateMonitor(route.params.id, formData)
     
     if (result.success) {
+      // Force trigger an immediate check after update to reflect changes
+      try {
+        await api.monitors.triggerCheck(route.params.id)
+        console.log('✅ Monitor updated and immediate check triggered')
+      } catch (err) {
+        console.warn('Failed to trigger immediate check:', err)
+      }
+      
       router.push(`/monitors/${route.params.id}`)
     } else {
       error.value = result.message || 'Failed to update monitor'

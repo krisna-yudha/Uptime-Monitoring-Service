@@ -370,6 +370,39 @@ class MonitorController extends Controller
     }
 
     /**
+     * Trigger immediate check for a monitor
+     */
+    public function triggerCheck(Monitor $monitor): JsonResponse
+    {
+        if (auth('api')->user()->role !== 'admin' && $monitor->created_by !== auth('api')->id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized access'
+            ], 403);
+        }
+
+        try {
+            // Dispatch job to queue for immediate processing
+            \App\Jobs\ProcessMonitorCheck::dispatch($monitor)->onQueue('high-priority');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Check triggered successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to trigger monitor check', [
+                'monitor_id' => $monitor->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to trigger check: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Get all monitor groups with statistics
      */
     public function groups(Request $request): JsonResponse
