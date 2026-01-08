@@ -381,6 +381,11 @@ const statsData = computed(() => {
   const latestCheck = monitor.value?.checks?.[0]
   const currentLatency = latestCheck?.latency_ms || null
   
+  // Calculate uptime values
+  const uptime24h = getUptimeValue(24)
+  const uptime7d = getUptimeValue(168) // 7 days = 168 hours
+  const uptime1m = getUptimeValue(720) // 30 days = 720 hours
+  
   return [
     {
       key: 'response',
@@ -408,28 +413,28 @@ const statsData = computed(() => {
       key: 'uptime_24h',
       header: 'Uptime',
       subheader: '(24-hour)',
-      value: '100%',
+      value: uptime24h,
       valueClass: 'uptime-value',
       loading: false,
-      trend: { direction: 'up', icon: '✓', text: 'Excellent' }
+      trend: getUptimeTrend(uptime24h)
     },
     {
-      key: 'uptime_30d',
+      key: 'uptime_7d',
       header: 'Uptime',
-      subheader: '(30-day)',
-      value: '99.8%',
+      subheader: '(7-day)',
+      value: uptime7d,
       valueClass: 'uptime-value',
       loading: false,
-      trend: { direction: 'up', icon: '↗', text: 'Good' }
+      trend: getUptimeTrend(uptime7d)
     },
     {
-      key: 'uptime_1y',
+      key: 'uptime_1m',
       header: 'Uptime',
-      subheader: '(1-year)',
-      value: '99.5%',
+      subheader: '(1-month)',
+      value: uptime1m,
       valueClass: 'uptime-value',
       loading: false,
-      trend: { direction: 'down', icon: '↘', text: 'Stable' }
+      trend: getUptimeTrend(uptime1m)
     },
     {
       key: 'cert_exp',
@@ -498,7 +503,23 @@ onUnmounted(() => {
 })
 
 // Watchers
-watch(() => route.params.id, fetchMonitorData)
+watch(() => route.params.id, async (newId, oldId) => {
+  // Stop all intervals when switching monitors to prevent data mixup
+  if (oldId && newId !== oldId) {
+    console.log('🔄 Monitor ID changed from', oldId, 'to', newId, '- stopping all intervals')
+    stopChartAutoRefresh()
+    stopHistoryAutoRefresh()
+    stopFirstCheckPoll()
+    stopFallbackHistoryPolling()
+    
+    // Clear current data
+    monitor.value = null
+    allStatusHistory.value = []
+    chartData.value = null
+  }
+  
+  await fetchMonitorData()
+})
 
 watch(() => monitor.value, async (newVal) => {
   if (newVal && !chartLoading.value) {
@@ -507,6 +528,57 @@ watch(() => monitor.value, async (newVal) => {
     await fetchChartData()
   }
 }, { deep: false })
+
+// Helper functions for uptime calculation
+function getUptimeValue(periodHours) {
+  if (!monitor.value || !monitor.value.created_at) return 'N/A'
+  
+  // Calculate how long the monitor has been running
+  const createdAt = new Date(monitor.value.created_at)
+  const now = new Date()
+  const monitorAgeHours = (now - createdAt) / (1000 * 60 * 60)
+  
+  // If monitor hasn't been running long enough for the period, return N/A
+  if (monitorAgeHours < periodHours) {
+    return 'N/A'
+  }
+  
+  // Get uptime percentage from monitor data based on period
+  let uptimePercentage = null
+  
+  if (periodHours === 24) {
+    // 24-hour uptime
+    uptimePercentage = monitor.value.uptime_24h ?? monitor.value.uptime_percentage
+  } else if (periodHours === 168) {
+    // 7-day uptime (168 hours)
+    uptimePercentage = monitor.value.uptime_7d ?? monitor.value.uptime_percentage
+  } else if (periodHours === 720) {
+    // 30-day/1-month uptime (720 hours)
+    uptimePercentage = monitor.value.uptime_30d ?? monitor.value.uptime_1m ?? monitor.value.uptime_percentage
+  }
+  
+  if (uptimePercentage !== null && uptimePercentage !== undefined) {
+    return `${parseFloat(uptimePercentage).toFixed(1)}%`
+  }
+  
+  return 'N/A'
+}
+
+function getUptimeTrend(uptimeValue) {
+  if (uptimeValue === 'N/A') return null
+  
+  const percentage = parseFloat(uptimeValue)
+  
+  if (percentage >= 99.9) {
+    return { direction: 'up', icon: '✓', text: 'Excellent' }
+  } else if (percentage >= 99.0) {
+    return { direction: 'up', icon: '↗', text: 'Good' }
+  } else if (percentage >= 95.0) {
+    return { direction: 'neutral', icon: '→', text: 'Fair' }
+  } else {
+    return { direction: 'down', icon: '↘', text: 'Poor' }
+  }
+}
 
 // Helper functions for SSL certificate
 function showNotif(message, type = 'info') {
@@ -636,11 +708,27 @@ async function fetchMonitorData() {
   error.value = null
   
   try {
+    const currentMonitorId = route.params.id
+    console.log('📥 Fetching monitor data for ID:', currentMonitorId)
+    
     // Add cache buster to force fresh data
     const cacheBuster = Date.now()
-    const result = await monitorStore.fetchMonitor(route.params.id, { _t: cacheBuster })
+    const result = await monitorStore.fetchMonitor(currentMonitorId, { _t: cacheBuster })
     
     if (result.success) {
+      // CRITICAL: Validate monitor ID matches before updating UI
+      if (result.data.id != currentMonitorId) {
+        console.error('❌ Monitor ID mismatch! Expected:', currentMonitorId, 'Got:', result.data.id)
+        error.value = 'Monitor ID mismatch - data integrity error'
+        return
+      }
+      
+      // Double-check route hasn't changed during fetch
+      if (route.params.id != currentMonitorId) {
+        console.warn('⚠️ Route changed during fetch, discarding data')
+        return
+      }
+      
       // Store monitor and normalize checks shape so UI always finds latency
       monitor.value = result.data
       if (monitor.value.checks && monitor.value.checks.length > 0) {
@@ -653,7 +741,7 @@ async function fetchMonitorData() {
         console.log('🔎 No checks present in monitor payload')
       }
       
-      console.log('✅ Monitor loaded:', monitor.value.name)
+      console.log('✅ Monitor loaded:', monitor.value.name, '(ID:', monitor.value.id, ')')
       console.log('⏱️ Monitor checks every:', monitor.value.interval_seconds, 'seconds')
       console.log('📦 Full Monitor Data:', monitor.value)
       console.log('🔐 SSL Certificate Data:', {
@@ -689,7 +777,7 @@ async function fetchMonitorData() {
       // Auto-refresh will be started automatically after chart is created in fetchChartData
       // record last known checked time so live updates can detect new checks
       lastKnownCheckedAt.value = monitor.value.last_checked_at || null
-      console.log('✅ Monitor data and chart loaded successfully')
+      console.log('✅ Monitor data and chart loaded successfully for', monitor.value.name)
       // Ensure Pinia store currentMonitor reflects any normalized checks
       try {
         monitorStore.currentMonitor = monitor.value
@@ -710,9 +798,23 @@ async function fetchMonitorData() {
 // Refresh monitor data silently (without loading state) for auto-refresh
 async function refreshMonitorData() {
   try {
-    const result = await monitorStore.fetchMonitor(route.params.id, { _t: Date.now() })
+    const currentMonitorId = route.params.id
+    const result = await monitorStore.fetchMonitor(currentMonitorId, { _t: Date.now() })
     
     if (result.success) {
+      // CRITICAL: Validate that the returned data is for the current monitor
+      // This prevents data mixup when switching between monitors
+      if (result.data.id != currentMonitorId) {
+        console.warn('⚠️ Monitor ID mismatch! Expected:', currentMonitorId, 'Got:', result.data.id)
+        return
+      }
+      
+      // Verify we're still on the same monitor (user might have navigated away)
+      if (route.params.id != currentMonitorId) {
+        console.warn('⚠️ Route changed during refresh, aborting update')
+        return
+      }
+      
       // Update monitor data including checks for current response time
       // Always attempt to refresh history after silent monitor refresh --
       // this ensures recent checks are reflected even if last_checked_at
@@ -737,6 +839,8 @@ async function refreshMonitorData() {
       }
       
       console.log('🔄 Monitor data refreshed:', {
+        id: result.data.id,
+        name: result.data.name,
         status: result.data.last_status,
         checked_at: result.data.last_checked_at,
         current_latency: result.data.checks?.[0]?.latency_ms
@@ -751,10 +855,11 @@ async function refreshMonitorData() {
 
 async function fetchStatusHistory() {
   try {
-    console.log('🔍 Fetching status history for monitor:', route.params.id)
+    const currentMonitorId = route.params.id
+    console.log('🔍 Fetching status history for monitor:', currentMonitorId)
     
     const response = await monitorStore.api.monitorChecks.getAll({
-      monitor_id: route.params.id,
+      monitor_id: currentMonitorId,
       per_page: 100,
       sort: 'checked_at',
       order: 'desc',
@@ -809,7 +914,13 @@ async function fetchStatusHistory() {
       totalItems.value = allStatusHistory.value.length
       currentPage.value = 1
 
-      console.log(`✅ Loaded ${allStatusHistory.value.length} status checks from API`)
+      // Verify we're still viewing the same monitor before updating UI
+      if (route.params.id != currentMonitorId) {
+        console.warn('⚠️ Route changed during fetch, discarding status history')
+        return
+      }
+      
+      console.log(`✅ Loaded ${allStatusHistory.value.length} status checks for monitor ${currentMonitorId}`)
       console.log('📊 First check:', allStatusHistory.value[0])
       
       // Start history auto-refresh
@@ -835,9 +946,11 @@ async function fetchStatusHistory() {
 async function updateHistoryRealtime() {
   if (!monitor.value || loading.value) return
   
+  const currentMonitorId = route.params.id
+  
   try {
     const response = await monitorStore.api.monitorChecks.getAll({
-      monitor_id: route.params.id,
+      monitor_id: currentMonitorId,
       per_page: 10,
       sort: 'checked_at',
       order: 'desc',
@@ -847,10 +960,22 @@ async function updateHistoryRealtime() {
     if (response.data.success) {
         const latestChecks = response.data.data.data || response.data.data || []
 
-        console.log('🔁 updateHistoryRealtime fetched', latestChecks.length, 'checks')
+        console.log('🔁 updateHistoryRealtime fetched', latestChecks.length, 'checks for monitor', currentMonitorId)
+        
+        // Verify we're still on the same monitor before updating
+        if (route.params.id != currentMonitorId) {
+          console.warn('⚠️ Route changed during update, aborting history update')
+          return
+        }
 
         let newAdded = 0
         latestChecks.forEach(check => {
+          // Validate that this check belongs to the current monitor
+          if (check.monitor_id != currentMonitorId) {
+            console.warn('⚠️ Check belongs to different monitor:', check.monitor_id, 'expected:', currentMonitorId)
+            return
+          }
+          
           const exists = allStatusHistory.value.find(item => item.id === check.id)
           if (!exists) {
             allStatusHistory.value.unshift({
@@ -935,23 +1060,25 @@ function stopChartAutoRefresh() {
 function startHistoryAutoRefresh() {
   stopHistoryAutoRefresh()
   
-  let refreshInterval = 2000 // Faster for realtime (2 seconds)
+  // Optimize refresh intervals for faster data capture in production
+  let refreshInterval = 1500 // Default 1.5 seconds for fast capture
   
   if (monitor.value?.interval_seconds) {
     const monitorInterval = monitor.value.interval_seconds * 1000
     
-    if (monitorInterval <= 2000) {
-      refreshInterval = 1000 // 1 second for very fast monitors
-    } else if (monitorInterval <= 5000) {
-      refreshInterval = 2000 // 2 seconds
-    } else if (monitorInterval <= 15000) {
-      refreshInterval = 5000 // 5 seconds
+    // For 10s monitors, check every 1s to catch data immediately
+    if (monitorInterval <= 10000) {
+      refreshInterval = 1000 // 1 second for 10s monitors
+    } else if (monitorInterval <= 30000) {
+      refreshInterval = 2000 // 2 seconds for 30s monitors
+    } else if (monitorInterval <= 60000) {
+      refreshInterval = 5000 // 5 seconds for 1min monitors
     } else {
       refreshInterval = 10000 // 10 seconds for slower monitors
     }
   }
   
-  console.log(`🔄 Starting history auto-refresh - Refreshing every ${refreshInterval/1000}s`)
+  console.log(`🔄 Starting history auto-refresh - Refreshing every ${refreshInterval/1000}s (monitor interval: ${monitor.value?.interval_seconds}s)`)
   
   historyRefreshInterval.value = setInterval(() => {
     if (!loading.value && monitor.value && !chartLoading.value) {
@@ -1005,7 +1132,7 @@ function ensureHistoryPolling() {
   stopFallbackHistoryPolling()
   // Only start fallback if no primary history refresh is active
   if (!historyRefreshInterval.value) {
-    console.log('🔁 Starting fallback history poll (5s)')
+    console.log('🔁 Starting fallback history poll (3s for faster capture)')
     fallbackHistoryPollInterval.value = setInterval(async () => {
       try {
         await updateHistoryRealtime()
@@ -1017,7 +1144,7 @@ function ensureHistoryPolling() {
       } catch (e) {
         // ignore errors; fallback should be resilient
       }
-    }, 5000)
+    }, 3000) // Faster fallback: 3s instead of 5s
   }
 }
 
@@ -1031,9 +1158,9 @@ function stopFallbackHistoryPolling() {
 async function updateChartRealtime() {
   if (chartLoading.value) return
   
-  // Debounce (500ms for realtime updates)
+  // Debounce reduced to 300ms for faster updates in production
   const now = Date.now()
-  if (now - lastUpdateTime.value < 500) {
+  if (now - lastUpdateTime.value < 300) {
     console.log('⏭️ Skipping update - too soon (debounce)')
     return
   }
@@ -1046,17 +1173,29 @@ async function updateChartRealtime() {
   isUpdating.value = true
   
   try {
+    const currentMonitorId = route.params.id
+    
     // Fetch latest data
     const response = await monitorStore.api.monitorChecks.getAll({
-      monitor_id: route.params.id,
+      monitor_id: currentMonitorId,
       per_page: getPeriodLimit(selectedPeriod.value),
       sort: 'checked_at',
       order: 'desc'
       , _t: Date.now()
     })
     
+    // Validate we're still on the same monitor
+    if (route.params.id != currentMonitorId) {
+      console.warn('⚠️ Route changed during chart update, aborting')
+      isUpdating.value = false
+      return
+    }
+    
     if (response.data.success) {
       let checks = response.data.data.data || response.data.data || []
+      
+      // Filter checks to ensure they belong to current monitor
+      checks = checks.filter(check => check.monitor_id == currentMonitorId)
       
       if (checks.length === 0) {
         console.log('⚠️ No data for realtime update')

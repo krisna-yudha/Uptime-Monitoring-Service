@@ -23,6 +23,20 @@ class ProcessMonitorCheck implements ShouldQueue
     protected Monitor $monitor;
 
     /**
+     * The number of seconds the job can run before timing out.
+     *
+     * @var int
+     */
+    public $timeout = 300; // 5 minutes timeout
+
+    /**
+     * The number of times the job may be attempted.
+     *
+     * @var int
+     */
+    public $tries = 3;
+
+    /**
      * Create a new job instance.
      */
     public function __construct(Monitor $monitor)
