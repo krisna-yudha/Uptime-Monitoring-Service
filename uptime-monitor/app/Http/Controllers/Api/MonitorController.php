@@ -229,9 +229,11 @@ class MonitorController extends Controller
         // Check if user can access this monitor
         $currentUser = auth('api')->user();
         
-        // Admin can access all monitors (shared ownership via created_by = 1)
+        // Admin can access all monitors (including orphaned ones with created_by = null)
         // Regular users can only access their own monitors
-        if ($currentUser->role !== 'admin' && $monitor->created_by !== $currentUser->id) {
+        if ($currentUser->role !== 'admin' && 
+            $monitor->created_by !== null && 
+            $monitor->created_by !== $currentUser->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access'
@@ -294,9 +296,11 @@ class MonitorController extends Controller
         // Check if user can update this monitor
         $currentUser = auth('api')->user();
         
-        // Admin can update all monitors (shared ownership)
+        // Admin can update all monitors (including orphaned ones with created_by = null)
         // Regular users can only update their own monitors
-        if ($currentUser->role !== 'admin' && $monitor->created_by !== $currentUser->id) {
+        if ($currentUser->role !== 'admin' && 
+            $monitor->created_by !== null && 
+            $monitor->created_by !== $currentUser->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access'
@@ -504,9 +508,11 @@ class MonitorController extends Controller
         // Check if user can delete this monitor
         $currentUser = auth('api')->user();
         
-        // Admin can delete all monitors (shared ownership)
+        // Admin can delete all monitors (including orphaned ones with created_by = null)
         // Regular users can only delete their own monitors
-        if ($currentUser->role !== 'admin' && $monitor->created_by !== $currentUser->id) {
+        if ($currentUser->role !== 'admin' && 
+            $monitor->created_by !== null && 
+            $monitor->created_by !== $currentUser->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access'
