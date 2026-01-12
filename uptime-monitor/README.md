@@ -8,7 +8,7 @@ Real-time service monitoring system with automatic bot notifications (Discord, T
 # Start all services ("Laravel + Workers + Frontend")
 start-monitoring.bat
 
-# Open browser
+# Open browsers
 http://localhost:5173
 ```
 
