@@ -16,12 +16,23 @@ class NotificationChannelController extends Controller
 {
     /**
      * Display a listing of the resource.
+     * All users can see all notification channels (admin and regular users)
      */
     public function index(): JsonResponse
     {
-        $channels = NotificationChannel::where('created_by', auth('api')->id())
+        // Show all notification channels to all authenticated users
+        // This allows any user to use any configured bot for their monitors
+        $channels = NotificationChannel::with('creator:id,name,email')
             ->latest()
             ->get();
+
+        // Add creator info to each channel
+        $channels->transform(function ($channel) {
+            $channel->created_by_name = $channel->creator->name ?? 'Unknown';
+            $channel->created_by_email = $channel->creator->email ?? '';
+            unset($channel->creator);
+            return $channel;
+        });
 
         return response()->json([
             'success' => true,
@@ -280,7 +291,7 @@ class NotificationChannelController extends Controller
 
         $response = Http::withOptions([
             'verify' => false, // Disable SSL verification for local development
-        ])->timeout(30)->post($webhookUrl, $payload);
+        ])->timeout(30)->connectTimeout(10)->post($webhookUrl, $payload);
 
         if (!$response->successful()) {
             $statusCode = $response->status();
@@ -315,7 +326,7 @@ class NotificationChannelController extends Controller
 
         $response = Http::withOptions([
             'verify' => false, // Disable SSL verification for local development
-        ])->timeout(30)->post($webhookUrl, $payload);
+        ])->timeout(30)->connectTimeout(10)->post($webhookUrl, $payload);
 
         if (!$response->successful()) {
             throw new \Exception("Slack webhook error: " . $response->body());

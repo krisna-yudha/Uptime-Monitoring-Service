@@ -66,10 +66,11 @@
                 <option value="">Select Type</option>
                 <option value="http">HTTP</option>
                 <option value="https">HTTPS</option>
-                <option value="tcp">TCP</option>
                 <option value="ping">Ping</option>
-                <option value="keyword">Keyword Check</option>
-                <option value="push">Push Monitor</option>
+                <option value="port">Port</option>
+                <option value="keyword">Keyword</option>
+                <option value="ssl">SSL Certificate</option>
+                <option value="heartbeat">Heartbeat</option>
               </select>
             </div>
           </div>

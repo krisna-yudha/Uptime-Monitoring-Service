@@ -80,7 +80,9 @@ class MonitorController extends Controller
             'enabled' => 'sometimes|boolean',
             'is_public' => 'sometimes|boolean',
             'config' => 'sometimes|array',
-            'tags' => 'sometimes|array'
+            'tags' => 'sometimes|array',
+            'notification_channel_ids' => 'sometimes|array',
+            'notification_channel_ids.*' => 'integer|exists:notification_channels,id'
         ]);
 
         if ($validator->fails()) {
@@ -170,7 +172,11 @@ class MonitorController extends Controller
             }
         }
 
-        if (isset($data['notification_channels']) && is_string($data['notification_channels'])) {
+        // Handle notification_channel_ids from frontend (array format)
+        if (isset($data['notification_channel_ids'])) {
+            $data['notification_channels'] = $data['notification_channel_ids'];
+            unset($data['notification_channel_ids']);
+        } elseif (isset($data['notification_channels']) && is_string($data['notification_channels'])) {
             $decoded = json_decode($data['notification_channels'], true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
                 $data['notification_channels'] = $decoded;
@@ -243,9 +249,40 @@ class MonitorController extends Controller
             }
         ]);
 
+        // Extract config fields to top-level for frontend compatibility
+        $monitorData = $monitor->toArray();
+        
+        if (!empty($monitor->config)) {
+            // HTTP specific fields
+            $monitorData['http_method'] = $monitor->config['http_method'] ?? 'GET';
+            $monitorData['http_headers'] = $monitor->config['http_headers'] ?? null;
+            $monitorData['http_body'] = $monitor->config['http_body'] ?? null;
+            $monitorData['http_expected_status_codes'] = $monitor->config['http_expected_status_codes'] ?? '';
+            $monitorData['http_follow_redirects'] = $monitor->config['http_follow_redirects'] ?? true;
+            $monitorData['http_verify_ssl'] = $monitor->config['http_verify_ssl'] ?? true;
+            
+            // Keyword specific fields
+            $monitorData['keyword_text'] = $monitor->config['keyword_text'] ?? '';
+            $monitorData['keyword_case_sensitive'] = $monitor->config['keyword_case_sensitive'] ?? false;
+            
+            // Heartbeat specific fields
+            $monitorData['heartbeat_grace_period_minutes'] = $monitor->config['heartbeat_grace_period_minutes'] ?? 5;
+        }
+        
+        // Convert timeout_ms to timeout_seconds for frontend
+        if (isset($monitorData['timeout_ms'])) {
+            $monitorData['timeout_seconds'] = intval($monitorData['timeout_ms'] / 1000);
+        }
+        
+        // Map enabled to is_enabled for frontend
+        $monitorData['is_enabled'] = $monitor->enabled ?? true;
+        
+        // Map retries to retry_count for frontend
+        $monitorData['retry_count'] = $monitor->retries ?? 3;
+
         return response()->json([
             'success' => true,
-            'data' => $monitor
+            'data' => $monitorData
         ]);
     }
 
@@ -274,13 +311,30 @@ class MonitorController extends Controller
             'port_number' => 'nullable|integer|min:1|max:65535',
             'interval_seconds' => 'sometimes|integer|min:1|max:3600',
             'timeout_ms' => 'sometimes|integer|min:1000|max:30000',
+            'timeout_seconds' => 'sometimes|integer|min:1|max:300',
             'retries' => 'sometimes|integer|min:1|max:5',
+            'retry_count' => 'sometimes|integer|min:0|max:5',
             'enabled' => 'sometimes|boolean',
+            'is_enabled' => 'sometimes|boolean',
             'is_public' => 'sometimes|boolean',
             'config' => 'sometimes|array',
             'tags' => 'sometimes|array',
             'group_name' => 'sometimes|nullable|string|max:255',
-            'group_description' => 'sometimes|nullable|string'
+            'group_description' => 'sometimes|nullable|string',
+            'notification_channel_ids' => 'sometimes|array',
+            'notification_channel_ids.*' => 'integer|exists:notification_channels,id',
+            // HTTP specific fields
+            'http_method' => 'sometimes|in:GET,POST,PUT,DELETE,HEAD,PATCH',
+            'http_headers' => 'sometimes|nullable',
+            'http_body' => 'sometimes|nullable|string',
+            'http_expected_status_codes' => 'sometimes|nullable|string',
+            'http_follow_redirects' => 'sometimes|boolean',
+            'http_verify_ssl' => 'sometimes|boolean',
+            // Keyword specific fields
+            'keyword_text' => 'sometimes|nullable|string',
+            'keyword_case_sensitive' => 'sometimes|boolean',
+            // Heartbeat specific fields
+            'heartbeat_grace_period_minutes' => 'sometimes|integer|min:1'
         ]);
 
         if ($validator->fails()) {
@@ -296,6 +350,84 @@ class MonitorController extends Controller
             $data['port'] = $data['port_number'];
         }
         unset($data['port_number']);
+        
+        // Handle field name conversions from frontend
+        if (isset($data['is_enabled'])) {
+            $data['enabled'] = $data['is_enabled'];
+            unset($data['is_enabled']);
+        }
+        
+        if (isset($data['timeout_seconds'])) {
+            $data['timeout_ms'] = $data['timeout_seconds'] * 1000;
+            unset($data['timeout_seconds']);
+        }
+        
+        if (isset($data['retry_count'])) {
+            $data['retries'] = $data['retry_count'];
+            unset($data['retry_count']);
+        }
+        
+        // Handle notification_channel_ids if provided
+        if (isset($data['notification_channel_ids'])) {
+            $data['notification_channels'] = $data['notification_channel_ids'];
+            unset($data['notification_channel_ids']);
+        }
+        
+        // Build config array from HTTP/Keyword/Heartbeat specific fields
+        $config = $monitor->config ?? [];
+        
+        // HTTP specific fields
+        if (isset($data['http_method'])) {
+            $config['http_method'] = $data['http_method'];
+            unset($data['http_method']);
+        }
+        if (isset($data['http_headers'])) {
+            // Parse if it's a JSON string, otherwise use as-is
+            if (is_string($data['http_headers']) && !empty($data['http_headers'])) {
+                $parsed = json_decode($data['http_headers'], true);
+                $config['http_headers'] = (json_last_error() === JSON_ERROR_NONE) ? $parsed : [];
+            } elseif (is_array($data['http_headers'])) {
+                $config['http_headers'] = $data['http_headers'];
+            }
+            unset($data['http_headers']);
+        }
+        if (isset($data['http_body'])) {
+            $config['http_body'] = $data['http_body'];
+            unset($data['http_body']);
+        }
+        if (isset($data['http_expected_status_codes'])) {
+            $config['http_expected_status_codes'] = $data['http_expected_status_codes'];
+            unset($data['http_expected_status_codes']);
+        }
+        if (isset($data['http_follow_redirects'])) {
+            $config['http_follow_redirects'] = $data['http_follow_redirects'];
+            unset($data['http_follow_redirects']);
+        }
+        if (isset($data['http_verify_ssl'])) {
+            $config['http_verify_ssl'] = $data['http_verify_ssl'];
+            unset($data['http_verify_ssl']);
+        }
+        
+        // Keyword specific fields
+        if (isset($data['keyword_text'])) {
+            $config['keyword_text'] = $data['keyword_text'];
+            unset($data['keyword_text']);
+        }
+        if (isset($data['keyword_case_sensitive'])) {
+            $config['keyword_case_sensitive'] = $data['keyword_case_sensitive'];
+            unset($data['keyword_case_sensitive']);
+        }
+        
+        // Heartbeat specific fields
+        if (isset($data['heartbeat_grace_period_minutes'])) {
+            $config['heartbeat_grace_period_minutes'] = $data['heartbeat_grace_period_minutes'];
+            unset($data['heartbeat_grace_period_minutes']);
+        }
+        
+        // Update config if any specific fields were set
+        if (!empty($config)) {
+            $data['config'] = $config;
+        }
         
         // Merge port into target if provided
         if (isset($data['port']) && $data['port']) {
@@ -667,6 +799,73 @@ class MonitorController extends Controller
             'success' => true,
             'message' => "Successfully {$action}d {$updated} monitors",
             'updated_count' => $updated
+        ]);
+    }
+
+    /**
+     * Bulk assign notification channels to monitors
+     */
+    public function bulkAssignNotifications(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'monitor_ids' => 'required|array|min:1',
+            'monitor_ids.*' => 'exists:monitors,id',
+            'notification_channel_ids' => 'required|array|min:1',
+            'notification_channel_ids.*' => 'exists:notification_channels,id',
+            'mode' => 'in:replace,append', // replace = overwrite existing, append = add to existing
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $data = $validator->validated();
+        $monitorIds = $data['monitor_ids'];
+        $notificationChannelIds = $data['notification_channel_ids'];
+        $mode = $data['mode'] ?? 'replace';
+
+        // Check authorization for all monitors
+        $monitors = Monitor::whereIn('id', $monitorIds);
+        if (auth('api')->user()->role !== 'admin') {
+            $monitors->where('created_by', auth('api')->id());
+        }
+        $monitors = $monitors->get();
+
+        if ($monitors->count() !== count($monitorIds)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Some monitors not found or unauthorized'
+            ], 403);
+        }
+
+        // Update notification channels for each monitor
+        $updated = 0;
+        foreach ($monitors as $monitor) {
+            if ($mode === 'replace') {
+                // Replace all existing notification channels
+                $monitor->update([
+                    'notification_channels' => $notificationChannelIds
+                ]);
+            } else {
+                // Append to existing notification channels
+                $existing = $monitor->notification_channels ?? [];
+                $merged = array_unique(array_merge($existing, $notificationChannelIds));
+                $monitor->update([
+                    'notification_channels' => $merged
+                ]);
+            }
+            $updated++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Successfully assigned notifications to {$updated} monitor(s)",
+            'updated_count' => $updated,
+            'mode' => $mode
         ]);
     }
 }

@@ -347,7 +347,13 @@ class ProcessMonitorCheck implements ShouldQueue
         $startTime = microtime(true);
         $config = $this->monitor->config ?? [];
         
-        $httpClient = Http::timeout($this->monitor->timeout_ms / 1000)
+        // Set both timeout and connectTimeout to prevent hanging connections
+        // connectTimeout is crucial for connections to different ports (e.g., 192.168.88.241:8080)
+        $timeoutSeconds = $this->monitor->timeout_ms / 1000;
+        $connectTimeoutSeconds = min($timeoutSeconds, 10); // Max 10 seconds for connection
+        
+        $httpClient = Http::timeout($timeoutSeconds)
+            ->connectTimeout($connectTimeoutSeconds)
             ->retry($this->monitor->retries, 1000)
             ->withOptions(['allow_redirects' => true]);
 
@@ -493,7 +499,11 @@ class ProcessMonitorCheck implements ShouldQueue
         
         // Then check for keyword
         if ($httpResult['status'] === 'up') {
-            $response = Http::timeout($this->monitor->timeout_ms / 1000)
+            $timeoutSeconds = $this->monitor->timeout_ms / 1000;
+            $connectTimeoutSeconds = min($timeoutSeconds, 10);
+            
+            $response = Http::timeout($timeoutSeconds)
+                ->connectTimeout($connectTimeoutSeconds)
                 ->get($this->monitor->target);
                 
             $body = $response->body();

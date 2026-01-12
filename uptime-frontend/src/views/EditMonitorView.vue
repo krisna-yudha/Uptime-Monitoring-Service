@@ -31,7 +31,8 @@
             class="form-control"
             @change="onTypeChange"
           >
-            <option value="http">HTTP/HTTPS</option>
+            <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
             <option value="ping">Ping</option>
             <option value="port">Port</option>
             <option value="keyword">Keyword</option>
@@ -66,9 +67,9 @@
         </div>
       </div>
 
-      <!-- HTTP Specific Settings -->
-      <div v-if="form.type === 'http'" class="form-section">
-        <h2>HTTP Settings</h2>
+      <!-- HTTP/HTTPS Specific Settings -->
+      <div v-if="form.type === 'http' || form.type === 'https'" class="form-section">
+        <h2>{{ form.type === 'https' ? 'HTTPS' : 'HTTP' }} Settings</h2>
         
         <div class="form-group">
           <label for="method">HTTP Method</label>
@@ -287,6 +288,7 @@
             v-for="channel in availableChannels"
             :key="channel.id"
             class="channel-item"
+            :class="{ 'channel-bound': isChannelBound(channel.id) }"
           >
             <label class="channel-label">
               <input
@@ -297,6 +299,7 @@
               <span class="channel-info">
                 <strong>{{ channel.name }}</strong>
                 <span class="channel-type">{{ channel.type.toUpperCase() }}</span>
+                <span v-if="isChannelBound(channel.id)" class="channel-badge">✓ Connected</span>
               </span>
             </label>
           </div>
@@ -344,6 +347,7 @@ const error = ref(null)
 const submitting = ref(false)
 const deleting = ref(false)
 const availableChannels = ref([])
+const initialBoundChannels = ref([]) // Store initially bound notification channels
 
 const form = ref({
   name: '',
@@ -394,6 +398,11 @@ onMounted(() => {
   fetchNotificationChannels()
 })
 
+// Check if a channel is already bound to this monitor (from initial load)
+function isChannelBound(channelId) {
+  return initialBoundChannels.value.includes(channelId)
+}
+
 async function fetchMonitorData() {
   loading.value = true
   error.value = null
@@ -414,8 +423,10 @@ async function fetchMonitorData() {
       if (monitor.notification_channels && Array.isArray(monitor.notification_channels)) {
         // Backend returns array of channel IDs
         form.value.notification_channel_ids = monitor.notification_channels
+        initialBoundChannels.value = [...monitor.notification_channels] // Store initial bound channels
       } else if (monitor.notification_channel_ids && Array.isArray(monitor.notification_channel_ids)) {
         form.value.notification_channel_ids = monitor.notification_channel_ids
+        initialBoundChannels.value = [...monitor.notification_channel_ids] // Store initial bound channels
       }
       
       // Handle JSON fields
@@ -649,6 +660,12 @@ async function deleteMonitor() {
   border: 1px solid #ecf0f1;
   border-radius: 4px;
   padding: 15px;
+  transition: all 0.2s ease;
+}
+
+.channel-item.channel-bound {
+  background-color: #e8f5e9;
+  border-color: #66bb6a;
 }
 
 .channel-label {
@@ -662,16 +679,33 @@ async function deleteMonitor() {
   margin: 0;
 }
 
+.channel-label input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .channel-info {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  flex: 1;
 }
 
 .channel-type {
   font-size: 0.8em;
   color: #7f8c8d;
   text-transform: uppercase;
+}
+
+.channel-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background-color: #66bb6a;
+  color: white;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: 600;
+  margin-top: 4px;
 }
 
 .no-channels {

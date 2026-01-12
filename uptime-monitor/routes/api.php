@@ -75,6 +75,7 @@ Route::middleware('auth:api')->group(function () {
         Route::get('groups', [MonitorController::class, 'groups']);
         Route::get('grouped', [MonitorController::class, 'grouped']);
         Route::post('bulk-action', [MonitorController::class, 'bulkAction']);
+        Route::post('bulk-assign-notifications', [MonitorController::class, 'bulkAssignNotifications']);
     });
     Route::apiResource('monitors', MonitorController::class);
     Route::prefix('monitors/{monitor}')->group(function () {

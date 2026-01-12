@@ -348,6 +348,166 @@
         </div>
       </div>
 
+      <!-- Bulk Assign Notifications -->
+      <div class="settings-section">
+        <div class="section-header">
+          <h2>🔔 Bulk Assign Notifications</h2>
+          <p>Assign notification channels to multiple monitors at once</p>
+        </div>
+
+        <div class="settings-card">
+          <div class="bulk-notification-container">
+            <div class="bulk-step">
+              <h3>Step 1: Select Monitors</h3>
+              
+              <!-- Search and Filter Controls -->
+              <div class="search-filter-controls">
+                <div class="search-box">
+                  <input 
+                    type="text" 
+                    v-model="monitorSearchQuery" 
+                    placeholder="Search monitors by name, type, or target..."
+                    class="form-control search-input"
+                  />
+                  <span class="search-icon">🔍</span>
+                </div>
+                
+                <div class="group-filter">
+                  <label>Group:</label>
+                  <select v-model="selectedGroup" class="form-control group-select">
+                    <option value="all">All Groups</option>
+                    <option 
+                      v-for="group in monitorGroups.filter(g => g !== 'all')" 
+                      :key="group"
+                      :value="group"
+                    >
+                      {{ group }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Selection Actions -->
+              <div class="monitor-selection-header">
+                <button @click="selectAllMonitors" class="btn btn-secondary btn-sm">
+                  Select All {{ filteredMonitors.length > 0 ? `(${filteredMonitors.length})` : '' }}
+                </button>
+                <button @click="deselectAllMonitors" class="btn btn-secondary btn-sm">Deselect All</button>
+                <span class="selection-count">{{ selectedMonitors.length }} monitor(s) selected</span>
+              </div>
+
+              <!-- Monitors List -->
+              <div v-if="filteredMonitors.length === 0" class="no-data">
+                <p>No monitors found matching your criteria.</p>
+              </div>
+              <div v-else class="monitor-list">
+                <label 
+                  v-for="monitor in filteredMonitors" 
+                  :key="monitor.id" 
+                  class="item-checkbox-label"
+                  :class="{ 'has-notifications': hasNotificationChannels(monitor) }"
+                >
+                  <input type="checkbox" :value="monitor.id" v-model="selectedMonitors" />
+                  <div class="item-info">
+                    <div class="item-name-wrapper">
+                      <span class="item-name">{{ monitor.name }}</span>
+                      <span 
+                        v-if="hasNotificationChannels(monitor)" 
+                        class="notification-badge"
+                        :title="getChannelNames(monitor)"
+                      >
+                        🔔 {{ monitor.notification_channels.length }}
+                      </span>
+                    </div>
+                    <div class="item-meta">
+                      <span class="item-badge type-badge">{{ monitor.type }}</span>
+                      <span v-if="monitor.group_name" class="item-badge group-badge">{{ monitor.group_name }}</span>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="bulk-step">
+              <h3>Step 2: Select Notification Channels</h3>
+              
+              <!-- Channel Search -->
+              <div class="search-filter-controls">
+                <div class="search-box">
+                  <input 
+                    type="text" 
+                    v-model="channelSearchQuery" 
+                    placeholder="Search channels by name or type..."
+                    class="form-control search-input"
+                  />
+                  <span class="search-icon">🔍</span>
+                </div>
+              </div>
+
+              <!-- No channels available -->
+              <div v-if="availableChannels.length === 0" class="no-data">
+                <p>No notification channels available.</p>
+                <router-link to="/notifications" class="btn btn-primary btn-sm">Configure Channels</router-link>
+              </div>
+
+              <!-- Channels List -->
+              <div v-else>
+                <div v-if="filteredChannels.length === 0" class="no-data">
+                  <p>No channels found matching your criteria.</p>
+                </div>
+                <div v-else class="channel-list">
+                  <label 
+                    v-for="channel in filteredChannels" 
+                    :key="channel.id" 
+                    class="item-checkbox-label"
+                  >
+                    <input type="checkbox" :value="channel.id" v-model="selectedChannels" />
+                    <div class="item-info">
+                      <span class="item-name">{{ channel.name }}</span>
+                      <span class="item-badge channel-badge">{{ channel.type }}</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="bulk-step">
+              <h3>Step 3: Assignment Mode</h3>
+              <div class="mode-selection">
+                <label class="mode-option">
+                  <input type="radio" name="mode" value="replace" v-model="assignmentMode" />
+                  <div class="mode-content">
+                    <strong>Replace All</strong>
+                    <p>Remove existing notifications and assign only selected channels</p>
+                  </div>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" name="mode" value="append" v-model="assignmentMode" />
+                  <div class="mode-content">
+                    <strong>Add to Existing</strong>
+                    <p>Keep existing notifications and add selected channels</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="bulk-actions">
+              <button 
+                @click="executeBulkAssign" 
+                :disabled="!canExecuteBulkAssign || bulkAssigning"
+                class="btn btn-success btn-large"
+              >
+                {{ bulkAssigning ? 'Assigning...' : `Assign to ${selectedMonitors.length} Monitor(s)` }}
+              </button>
+            </div>
+
+            <div v-if="bulkAssignResult" class="action-result" :class="bulkAssignResult.success ? 'success' : 'error'">
+              {{ bulkAssignResult.message }}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Save Button -->
       <div class="settings-footer">
         <button 
@@ -380,6 +540,68 @@ const aggregating = ref(false)
 const cleaning = ref(false)
 const aggregationResult = ref(null)
 const cleanupResult = ref(null)
+
+// Bulk assign notifications
+const availableMonitors = ref([])
+const availableChannels = ref([])
+const selectedMonitors = ref([])
+const selectedChannels = ref([])
+const assignmentMode = ref('replace')
+const bulkAssigning = ref(false)
+const bulkAssignResult = ref(null)
+const monitorSearchQuery = ref('')
+const channelSearchQuery = ref('')
+const selectedGroup = ref('all')
+
+const canExecuteBulkAssign = computed(() => {
+  return selectedMonitors.value.length > 0 && selectedChannels.value.length > 0
+})
+
+// Get unique groups from monitors
+const monitorGroups = computed(() => {
+  const groups = new Set()
+  availableMonitors.value.forEach(monitor => {
+    if (monitor.group_name) {
+      groups.add(monitor.group_name)
+    }
+  })
+  return ['all', ...Array.from(groups).sort()]
+})
+
+// Filtered monitors based on search and group
+const filteredMonitors = computed(() => {
+  let monitors = availableMonitors.value
+
+  // Filter by group
+  if (selectedGroup.value !== 'all') {
+    monitors = monitors.filter(m => m.group_name === selectedGroup.value)
+  }
+
+  // Filter by search query
+  if (monitorSearchQuery.value) {
+    const query = monitorSearchQuery.value.toLowerCase()
+    monitors = monitors.filter(m => 
+      m.name.toLowerCase().includes(query) ||
+      m.type.toLowerCase().includes(query) ||
+      m.target?.toLowerCase().includes(query)
+    )
+  }
+
+  return monitors
+})
+
+// Filtered channels based on search
+const filteredChannels = computed(() => {
+  if (!channelSearchQuery.value) {
+    return availableChannels.value
+  }
+
+  const query = channelSearchQuery.value.toLowerCase()
+  return availableChannels.value.filter(c =>
+    c.name.toLowerCase().includes(query) ||
+    c.type.toLowerCase().includes(query)
+  )
+})
 
 const today = computed(() => new Date().toISOString().split('T')[0])
 
@@ -417,7 +639,101 @@ const manualCleanup = ref({
 
 onMounted(async () => {
   await loadSettings()
+  await loadMonitorsAndChannels()
 })
+
+async function loadMonitorsAndChannels() {
+  try {
+    // Load monitors
+    const monitorsRes = await api.monitors.getAll()
+    if (monitorsRes.data && monitorsRes.data.success) {
+      availableMonitors.value = monitorsRes.data.data.data || monitorsRes.data.data || []
+    }
+    
+    // Load notification channels
+    const channelsRes = await api.notificationChannels.getAll()
+    if (channelsRes.data && channelsRes.data.success) {
+      availableChannels.value = channelsRes.data.data || []
+    }
+  } catch (err) {
+    console.error('Failed to load monitors/channels:', err)
+  }
+}
+
+function selectAllMonitors() {
+  selectedMonitors.value = filteredMonitors.value.map(m => m.id)
+}
+
+function deselectAllMonitors() {
+  selectedMonitors.value = []
+}
+
+function hasNotificationChannels(monitor) {
+  return monitor.notification_channels && 
+         Array.isArray(monitor.notification_channels) && 
+         monitor.notification_channels.length > 0
+}
+
+function getChannelNames(monitor) {
+  if (!hasNotificationChannels(monitor)) return ''
+  
+  // Get channel names by matching IDs
+  const channelIds = monitor.notification_channels
+  const names = channelIds
+    .map(id => {
+      const channel = availableChannels.value.find(c => c.id === id)
+      return channel ? channel.name : null
+    })
+    .filter(name => name !== null)
+  
+  return names.length > 0 ? names.join(', ') : 'Connected channels'
+}
+
+function selectMonitorsByGroup(groupName) {
+  const groupMonitors = availableMonitors.value
+    .filter(m => m.group_name === groupName)
+    .map(m => m.id)
+  
+  // Add to existing selection (not replace)
+  selectedMonitors.value = [...new Set([...selectedMonitors.value, ...groupMonitors])]
+}
+
+async function executeBulkAssign() {
+  if (!canExecuteBulkAssign.value) return
+  
+  bulkAssigning.value = true
+  bulkAssignResult.value = null
+  
+  try {
+    const response = await api.monitors.bulkAssignNotifications({
+      monitor_ids: selectedMonitors.value,
+      notification_channel_ids: selectedChannels.value,
+      mode: assignmentMode.value
+    })
+    
+    if (response.data && response.data.success) {
+      bulkAssignResult.value = {
+        success: true,
+        message: `✓ ${response.data.message}`
+      }
+      
+      // Reset selections after successful assignment
+      setTimeout(() => {
+        selectedMonitors.value = []
+        selectedChannels.value = []
+        bulkAssignResult.value = null
+      }, 3000)
+    }
+  } catch (err) {
+    console.error('Bulk assign failed:', err)
+    bulkAssignResult.value = {
+      success: false,
+      message: `✗ Failed: ${err.response?.data?.message || err.message}`
+    }
+  } finally {
+    bulkAssigning.value = false
+  }
+}
 
 async function loadSettings() {
   loading.value = true
@@ -1315,6 +1631,346 @@ input:focus + .slider {
   background: linear-gradient(135deg, #fafafa 0%, #e0e0e0 100%);
   color: #757575;
   border-color: #bdbdbd;
+}
+
+/* Bulk Assign Notifications Styles */
+.bulk-notification-container {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.bulk-step {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  border: 2px solid #e8eaed;
+}
+
+.bulk-step h3 {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  color: #2c3e50;
+  font-weight: 700;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e3f2fd;
+}
+
+.monitor-selection-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.selection-count {
+  font-weight: 600;
+  color: #667eea;
+  padding: 6px 12px;
+  background: #e3f2fd;
+  border-radius: 6px;
+}
+
+.monitor-list,
+.channel-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.item-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: white;
+  border: 2px solid #e8eaed;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.item-checkbox-label:hover {
+  border-color: #667eea;
+  background: #f0f4ff;
+}
+
+.item-checkbox-label.has-notifications {
+  background: linear-gradient(135deg, #e8f5e9 0%, #f1f8f4 100%);
+  border-color: #66bb6a;
+  box-shadow: 0 2px 8px rgba(102, 187, 106, 0.15);
+}
+
+.item-checkbox-label.has-notifications:hover {
+  background: linear-gradient(135deg, #c8e6c9 0%, #e8f5e9 100%);
+  border-color: #43a047;
+}
+
+.item-checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+.item-checkbox-label.has-notifications input[type="checkbox"] {
+  accent-color: #66bb6a;
+}
+
+.item-checkbox-label input[type="checkbox"]:checked + .item-name {
+  font-weight: 600;
+  color: #667eea;
+}
+
+.item-name {
+  flex: 1;
+  font-size: 14px;
+  color: #2c3e50;
+}
+
+.item-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.type-badge {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  color: #1565c0;
+}
+
+.channel-badge {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  color: #2e7d32;
+}
+
+.group-badge {
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  color: #e65100;
+  border: 1px solid #ffb74d;
+}
+
+/* Search and Filter Controls */
+.search-filter-controls {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 200px;
+  position: relative;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 40px 10px 16px;
+  border: 2px solid #e8eaed;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.search-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  opacity: 0.5;
+}
+
+.group-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.group-filter label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  white-space: nowrap;
+}
+
+.group-select {
+  flex: 1;
+  padding: 10px 16px;
+  border: 2px solid #e8eaed;
+  border-radius: 8px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.group-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notification-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
+  color: white;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(67, 160, 71, 0.3);
+  animation: pulse 2s ease-in-out infinite;
+  cursor: help;
+  position: relative;
+}
+
+.notification-badge:hover {
+  animation: none;
+  box-shadow: 0 4px 12px rgba(67, 160, 71, 0.6);
+  transform: scale(1.05);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 2px 6px rgba(67, 160, 71, 0.3);
+  }
+  50% {
+    box-shadow: 0 2px 12px rgba(67, 160, 71, 0.5);
+  }
+}
+
+.item-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.no-data {
+  padding: 40px 20px;
+  text-align: center;
+  color: #6c757d;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px dashed #dee2e6;
+}
+
+.no-data p {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+}
+
+.mode-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: white;
+  border: 2px solid #e8eaed;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-option:hover {
+  border-color: #667eea;
+  background: #f0f4ff;
+}
+
+.mode-option input[type="radio"] {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+.mode-content {
+  flex: 1;
+}
+
+.mode-content strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 16px;
+  color: #2c3e50;
+}
+
+.mode-content p {
+  margin: 0;
+  font-size: 14px;
+  color: #6c757d;
+  line-height: 1.5;
+}
+
+.bulk-actions {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.no-data {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6c757d;
+}
+
+.no-data p {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  .monitor-list,
+  .channel-list {
+    grid-template-columns: 1fr;
+  }
+  
+  .monitor-selection-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .selection-count {
+    text-align: center;
+  }
 }
 
 @media (max-width: 768px) {

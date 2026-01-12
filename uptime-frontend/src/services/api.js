@@ -59,7 +59,8 @@ export default {
     triggerCheck: (id) => api.post(`/monitors/${id}/check`),
     getGroups: () => api.get('/monitors/groups'),
     getGrouped: (params = {}) => api.get('/monitors/grouped', { params }),
-    bulkAction: (data) => api.post('/monitors/bulk-action', data)
+    bulkAction: (data) => api.post('/monitors/bulk-action', data),
+    bulkAssignNotifications: (data) => api.post('/monitors/bulk-assign-notifications', data)
   },
 
   // Dashboard endpoints

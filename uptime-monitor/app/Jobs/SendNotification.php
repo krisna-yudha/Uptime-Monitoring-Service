@@ -330,7 +330,7 @@ class SendNotification implements ShouldQueue
 
         $response = Http::withOptions([
             'verify' => false, // Disable SSL verification for local development
-        ])->timeout(30)->post($webhookUrl, $payload);
+        ])->timeout(30)->connectTimeout(10)->post($webhookUrl, $payload);
 
         if (!$response->successful()) {
             $errorBody = $response->body();
@@ -363,7 +363,7 @@ class SendNotification implements ShouldQueue
 
         $response = Http::withOptions([
             'verify' => false, // Disable SSL verification for local development
-        ])->timeout(30)->post($webhookUrl, $payload);
+        ])->timeout(30)->connectTimeout(10)->post($webhookUrl, $payload);
 
         if (!$response->successful()) {
             throw new Exception("Slack webhook error: " . $response->body());
