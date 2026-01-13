@@ -27,4 +27,8 @@ Schedule::command('metrics:cleanup')->dailyAt('02:00');
 // Schedule cleanup of old monitoring logs (runs every 30 days at 3:00 AM)
 // Deletes logs older than 30 days to prevent database bloat
 Schedule::command('logs:cleanup')->monthlyOn(1, '03:00');
+
+// Schedule queue jobs cleanup - runs every 5 minutes
+// Keeps maximum 5000 jobs in queue to prevent bloat
+Schedule::command('queue:cleanup --max-jobs=5000')->everyFiveMinutes();
     

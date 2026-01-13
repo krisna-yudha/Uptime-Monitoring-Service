@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Monitor;
+use App\Models\MonitorCheck;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -281,6 +282,49 @@ class MonitorController extends Controller
         
         // Map retries to retry_count for frontend
         $monitorData['retry_count'] = $monitor->retries ?? 3;
+
+        // Calculate average response time for different periods from monitor creation time
+        $createdAt = $monitor->created_at;
+        $now = now();
+        
+        // 1 hour average
+        $avg1h = MonitorCheck::where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', max($createdAt, $now->copy()->subHour()))
+            ->where('status', 'up')
+            ->whereNotNull('latency_ms')
+            ->avg('latency_ms');
+        $monitorData['avg_response_1h'] = $avg1h ? round($avg1h, 2) : null;
+        
+        // 24 hour average
+        $avg24h = MonitorCheck::where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', max($createdAt, $now->copy()->subDay()))
+            ->where('status', 'up')
+            ->whereNotNull('latency_ms')
+            ->avg('latency_ms');
+        $monitorData['avg_response_24h'] = $avg24h ? round($avg24h, 2) : null;
+        
+        // 7 days average
+        $avg7d = MonitorCheck::where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', max($createdAt, $now->copy()->subDays(7)))
+            ->where('status', 'up')
+            ->whereNotNull('latency_ms')
+            ->avg('latency_ms');
+        $monitorData['avg_response_7d'] = $avg7d ? round($avg7d, 2) : null;
+        
+        // 30 days average
+        $avg30d = MonitorCheck::where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', max($createdAt, $now->copy()->subDays(30)))
+            ->where('status', 'up')
+            ->whereNotNull('latency_ms')
+            ->avg('latency_ms');
+        $monitorData['avg_response_30d'] = $avg30d ? round($avg30d, 2) : null;
+        
+        // All-time average (from creation)
+        $avgAllTime = MonitorCheck::where('monitor_id', $monitor->id)
+            ->where('status', 'up')
+            ->whereNotNull('latency_ms')
+            ->avg('latency_ms');
+        $monitorData['avg_response_all_time'] = $avgAllTime ? round($avgAllTime, 2) : null;
 
         return response()->json([
             'success' => true,

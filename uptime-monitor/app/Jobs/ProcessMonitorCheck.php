@@ -557,6 +557,36 @@ class ProcessMonitorCheck implements ShouldQueue
 
         // Normal status change handling
         if ($currentStatus === $previousStatus && !$isCriticalError) {
+            // However, if status is DOWN and there's no open incident (e.g. user resolved it manually),
+            // we need to create a new incident because the service is still down
+            if ($currentStatus === 'down' && !$lastIncident) {
+                $incidentDescription = $errorMessage 
+                    ? "Monitor still down: {$errorMessage}" 
+                    : "Monitor remains in down state";
+
+                $incident = Incident::create([
+                    'monitor_id' => $this->monitor->id,
+                    'started_at' => now(),
+                    'resolved' => false,
+                    'status' => 'open',
+                    'alert_status' => 'none',
+                    'description' => $incidentDescription,
+                ]);
+
+                Log::info("New incident created for ongoing downtime", [
+                    'monitor_id' => $this->monitor->id,
+                    'incident_id' => $incident->id,
+                    'current_status' => $currentStatus,
+                    'reason' => 'No open incident exists while service is down'
+                ]);
+
+                // Send notification if threshold met
+                $notifyThreshold = isset($this->monitor->notify_after_retries) ? (int) $this->monitor->notify_after_retries : 10;
+                $effectiveThreshold = max(10, $notifyThreshold);
+                if ($this->monitor->consecutive_failures >= $effectiveThreshold) {
+                    SendNotification::dispatch($this->monitor, 'down', $incident);
+                }
+            }
             return;
         }
 

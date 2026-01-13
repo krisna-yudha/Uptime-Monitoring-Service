@@ -386,8 +386,11 @@ const statsData = computed(() => {
   const uptime7d = getUptimeValue(168) // 7 days = 168 hours
   const uptime1m = getUptimeValue(720) // 30 days = 720 hours
   
-  // Calculate average response time for 1 hour
+  // Calculate average response time for different periods
   const avgResponse1h = getAverageResponse(1)
+  const avgResponse24h = getAverageResponse(24)
+  const avgResponse7d = getAverageResponse(168)
+  const avgResponse30d = getAverageResponse(720)
   
   return [
     {
@@ -540,7 +543,21 @@ watch(() => monitor.value, async (newVal) => {
 function getAverageResponse(hours = 1) {
   if (!monitor.value) return 'N/A'
   
-  // Get checks from allStatusHistory if available
+  // Use pre-calculated average from backend if available
+  if (hours === 1 && monitor.value.avg_response_1h !== undefined && monitor.value.avg_response_1h !== null) {
+    return `${monitor.value.avg_response_1h} ms`
+  }
+  if (hours === 24 && monitor.value.avg_response_24h !== undefined && monitor.value.avg_response_24h !== null) {
+    return `${monitor.value.avg_response_24h} ms`
+  }
+  if (hours === 168 && monitor.value.avg_response_7d !== undefined && monitor.value.avg_response_7d !== null) {
+    return `${monitor.value.avg_response_7d} ms`
+  }
+  if (hours === 720 && monitor.value.avg_response_30d !== undefined && monitor.value.avg_response_30d !== null) {
+    return `${monitor.value.avg_response_30d} ms`
+  }
+  
+  // Fallback to client-side calculation from allStatusHistory
   if (!allStatusHistory.value || allStatusHistory.value.length === 0) {
     return 'N/A'
   }
