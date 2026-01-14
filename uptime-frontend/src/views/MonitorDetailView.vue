@@ -681,53 +681,35 @@ async function fetchMonitorData() {
   
   try {
     const currentMonitorId = route.params.id
-    console.log('📥 Fetching monitor data for ID:', currentMonitorId)
     
-    // Add cache buster to force fresh data
     const cacheBuster = Date.now()
     const result = await monitorStore.fetchMonitor(currentMonitorId, { _t: cacheBuster })
     
     if (result.success) {
-      // CRITICAL: Validate monitor ID matches before updating UI
       if (result.data.id != currentMonitorId) {
-        console.error('❌ Monitor ID mismatch! Expected:', currentMonitorId, 'Got:', result.data.id)
         error.value = 'Monitor ID mismatch - data integrity error'
+        loading.value = false
         return
       }
       
-      // Double-check route hasn't changed during fetch
       if (route.params.id != currentMonitorId) {
-        console.warn('⚠️ Route changed during fetch, discarding data')
+        loading.value = false
         return
       }
       
-      // Store monitor and normalize checks shape so UI always finds latency
       monitor.value = result.data
       if (monitor.value.checks && monitor.value.checks.length > 0) {
         monitor.value.checks = monitor.value.checks.map(c => ({
           ...c,
           latency_ms: c.latency_ms ?? c.latency ?? c.response_time ?? c.response_time_ms ?? null
         }))
-        console.log('🔎 First check latency after load:', monitor.value.checks[0].latency_ms)
-      } else {
-        console.log('🔎 No checks present in monitor payload')
       }
       
-      console.log('✅ Monitor loaded:', monitor.value.name, '(ID:', monitor.value.id, ')')
-      console.log('⏱️ Monitor checks every:', monitor.value.interval_seconds, 'seconds')
-      console.log('📦 Full Monitor Data:', monitor.value)
-      console.log('🔐 SSL Certificate Data:', {
-        type: monitor.value.type,
-        ssl_cert_expiry: monitor.value.ssl_cert_expiry,
-        ssl_cert_issuer: monitor.value.ssl_cert_issuer,
-        ssl_checked_at: monitor.value.ssl_checked_at
-      })
+      // IMMEDIATE UI RENDER - Hide loading to show stats instantly
+      loading.value = false
       
-      // Pastikan canvas siap
       await nextTick()
-      // If the monitor payload already contains recent checks (create response),
-      // seed the status history so the UI updates immediately while full history
-      // is fetched in the background.
+      
       if (monitor.value.checks && monitor.value.checks.length > 0) {
         allStatusHistory.value = monitor.value.checks.map(check => ({
           id: check.id,
@@ -738,14 +720,17 @@ async function fetchMonitorData() {
         }))
         totalItems.value = allStatusHistory.value.length
         currentPage.value = 1
-        console.log('🧩 Seeded status history from monitor.checks:', allStatusHistory.value.length)
       }
 
-      // Load status history immediately to show data faster
-      fetchStatusHistory().catch(e => console.error('Background status history fetch failed:', e))
+      // Load status history in background (non-blocking)
+      setTimeout(() => {
+        fetchStatusHistory().catch(e => console.error('Background status history fetch failed:', e))
+      }, 100)
       
-      // Load chart in background without blocking
-      fetchChartData().catch(e => console.error('Background chart fetch failed:', e))
+      // Load chart in background with delay (non-blocking)
+      setTimeout(() => {
+        fetchChartData().catch(e => console.error('Background chart fetch failed:', e))
+      }, 200)
       
       // Auto-refresh will be started automatically after chart is created in fetchChartData
       // record last known checked time so live updates can detect new checks
