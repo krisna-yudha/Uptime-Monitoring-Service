@@ -244,8 +244,6 @@ class MonitorController extends Controller
         // Check if user can access this monitor
         $currentUser = auth('api')->user();
         
-        // Admin can access all monitors (including orphaned ones with created_by = null)
-        // Regular users can only access their own monitors
         if ($currentUser->role !== 'admin' && 
             $monitor->created_by !== null && 
             $monitor->created_by !== $currentUser->id) {
@@ -255,52 +253,59 @@ class MonitorController extends Controller
             ], 403);
         }
 
-        // Optimized eager loading - only load essential data
-        // Removed incidents loading as it's not needed for detail page initial load
+        // ULTRA FAST LOADING - Only load absolute minimum data
         $monitor->load([
             'creator:id,name,email',
-            'actualCreator:id,name,email',
             'checks' => function ($query) {
-                $query->select('id', 'monitor_id', 'checked_at', 'status', 'latency_ms', 'http_status', 'error_message')
+                // Only load the very latest check for current response time
+                $query->select('id', 'monitor_id', 'checked_at', 'status', 'latency_ms')
                       ->latest()
-                      ->limit(5); // Reduced from 10 to 5 for faster loading
+                      ->limit(1); // Only 1 check for maximum speed
             }
         ]);
 
-        // Extract config fields to top-level for frontend compatibility
-        $monitorData = $monitor->toArray();
+        // Fast array conversion - minimal processing
+        $monitorData = [
+            'id' => $monitor->id,
+            'name' => $monitor->name,
+            'type' => $monitor->type,
+            'target' => $monitor->target,
+            'port' => $monitor->port,
+            'interval_seconds' => $monitor->interval_seconds,
+            'timeout_ms' => $monitor->timeout_ms,
+            'retries' => $monitor->retries,
+            'enabled' => $monitor->enabled,
+            'is_public' => $monitor->is_public,
+            'group_name' => $monitor->group_name,
+            'group_description' => $monitor->group_description,
+            'last_status' => $monitor->last_status,
+            'last_checked_at' => $monitor->last_checked_at,
+            'consecutive_failures' => $monitor->consecutive_failures,
+            'pause_until' => $monitor->pause_until,
+            'created_at' => $monitor->created_at,
+            'created_by' => $monitor->created_by,
+            'icon_url' => $monitor->icon_url,
+            'ssl_cert_expiry' => $monitor->ssl_cert_expiry,
+            'ssl_cert_issuer' => $monitor->ssl_cert_issuer,
+            'ssl_checked_at' => $monitor->ssl_checked_at,
+            'uptime_24h' => $monitor->uptime_24h,
+            'uptime_7d' => $monitor->uptime_7d,
+            'uptime_30d' => $monitor->uptime_30d,
+            'checks' => $monitor->checks,
+            'creator' => $monitor->creator,
+            
+            // Frontend compatibility
+            'is_enabled' => $monitor->enabled ?? true,
+            'retry_count' => $monitor->retries ?? 3,
+            'timeout_seconds' => isset($monitor->timeout_ms) ? intval($monitor->timeout_ms / 1000) : null,
+        ];
         
+        // Only extract config if it exists
         if (!empty($monitor->config)) {
-            // HTTP specific fields
             $monitorData['http_method'] = $monitor->config['http_method'] ?? 'GET';
-            $monitorData['http_headers'] = $monitor->config['http_headers'] ?? null;
-            $monitorData['http_body'] = $monitor->config['http_body'] ?? null;
-            $monitorData['http_expected_status_codes'] = $monitor->config['http_expected_status_codes'] ?? '';
-            $monitorData['http_follow_redirects'] = $monitor->config['http_follow_redirects'] ?? true;
-            $monitorData['http_verify_ssl'] = $monitor->config['http_verify_ssl'] ?? true;
-            
-            // Keyword specific fields
             $monitorData['keyword_text'] = $monitor->config['keyword_text'] ?? '';
-            $monitorData['keyword_case_sensitive'] = $monitor->config['keyword_case_sensitive'] ?? false;
-            
-            // Heartbeat specific fields
-            $monitorData['heartbeat_grace_period_minutes'] = $monitor->config['heartbeat_grace_period_minutes'] ?? 5;
+            $monitorData['http_verify_ssl'] = $monitor->config['http_verify_ssl'] ?? true;
         }
-        
-        // Convert timeout_ms to timeout_seconds for frontend
-        if (isset($monitorData['timeout_ms'])) {
-            $monitorData['timeout_seconds'] = intval($monitorData['timeout_ms'] / 1000);
-        }
-        
-        // Map enabled to is_enabled for frontend
-        $monitorData['is_enabled'] = $monitor->enabled ?? true;
-        
-        // Map retries to retry_count for frontend
-        $monitorData['retry_count'] = $monitor->retries ?? 3;
-
-        // NOTE: Average response time calculations removed for performance
-        // Current response is available from the latest check in monitor->checks
-        // This drastically improves page load speed by eliminating 5 slow queries
 
         return response()->json([
             'success' => true,
