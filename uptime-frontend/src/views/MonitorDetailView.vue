@@ -819,10 +819,11 @@ async function fetchMonitorData() {
         console.log('🧩 Seeded status history from monitor.checks:', allStatusHistory.value.length)
       }
 
-      await Promise.all([
-        fetchStatusHistory(),
-        fetchChartData()
-      ])
+      // Load status history immediately to show data faster
+      fetchStatusHistory().catch(e => console.error('Background status history fetch failed:', e))
+      
+      // Load chart in background without blocking
+      fetchChartData().catch(e => console.error('Background chart fetch failed:', e))
       
       // Auto-refresh will be started automatically after chart is created in fetchChartData
       // record last known checked time so live updates can detect new checks
@@ -910,7 +911,7 @@ async function fetchStatusHistory() {
     
     const response = await monitorStore.api.monitorChecks.getAll({
       monitor_id: currentMonitorId,
-      per_page: 100,
+      per_page: 20,
       sort: 'checked_at',
       order: 'desc',
       _t: Date.now()
@@ -1001,7 +1002,7 @@ async function updateHistoryRealtime() {
   try {
     const response = await monitorStore.api.monitorChecks.getAll({
       monitor_id: currentMonitorId,
-      per_page: 10,
+      per_page: 5,
       sort: 'checked_at',
       order: 'desc',
       _t: Date.now()
@@ -1441,10 +1442,10 @@ function drawChart(dataPoints) {
 function getPeriodLimit(period) {
   switch (period) {
     case '1h': return 60
-    case '24h': return 100
-    case '7d': return 168
-    case '30d': return 720
-    default: return 100
+    case '24h': return 50
+    case '7d': return 84
+    case '30d': return 200
+    default: return 50
   }
 }
 
