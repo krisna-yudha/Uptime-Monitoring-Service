@@ -297,74 +297,9 @@ class MonitorController extends Controller
         // Map retries to retry_count for frontend
         $monitorData['retry_count'] = $monitor->retries ?? 3;
 
-        // Calculate average response time for different periods from monitor creation time
-        $createdAt = $monitor->created_at;
-        $now = now();
-        
-        // 1 hour average (limit to recent 500 checks max for performance)
-        $avg1hSubquery = MonitorCheck::select('latency_ms')
-            ->where('monitor_id', $monitor->id)
-            ->where('checked_at', '>=', max($createdAt, $now->copy()->subHour()))
-            ->where('status', 'up')
-            ->whereNotNull('latency_ms')
-            ->orderBy('checked_at', 'desc')
-            ->limit(500);
-        $avg1h = DB::table(DB::raw("({$avg1hSubquery->toSql()}) as sub"))
-            ->mergeBindings($avg1hSubquery->getQuery())
-            ->avg('latency_ms');
-        $monitorData['avg_response_1h'] = $avg1h ? round($avg1h, 2) : null;
-        
-        // 24 hour average (limit to recent 1000 checks max for performance)
-        $avg24hSubquery = MonitorCheck::select('latency_ms')
-            ->where('monitor_id', $monitor->id)
-            ->where('checked_at', '>=', max($createdAt, $now->copy()->subDay()))
-            ->where('status', 'up')
-            ->whereNotNull('latency_ms')
-            ->orderBy('checked_at', 'desc')
-            ->limit(1000);
-        $avg24h = DB::table(DB::raw("({$avg24hSubquery->toSql()}) as sub"))
-            ->mergeBindings($avg24hSubquery->getQuery())
-            ->avg('latency_ms');
-        $monitorData['avg_response_24h'] = $avg24h ? round($avg24h, 2) : null;
-        
-        // 7 days average
-        // 7 days average (limit to recent 2000 checks max for performance)
-        $avg7dSubquery = MonitorCheck::select('latency_ms')
-            ->where('monitor_id', $monitor->id)
-            ->where('checked_at', '>=', max($createdAt, $now->copy()->subDays(7)))
-            ->where('status', 'up')
-            ->whereNotNull('latency_ms')
-            ->orderBy('checked_at', 'desc')
-            ->limit(2000);
-        $avg7d = DB::table(DB::raw("({$avg7dSubquery->toSql()}) as sub"))
-            ->mergeBindings($avg7dSubquery->getQuery())
-            ->avg('latency_ms');
-        $monitorData['avg_response_7d'] = $avg7d ? round($avg7d, 2) : null;
-        
-        // 30 days average (limit to recent 3000 checks max for performance)
-        $avg30dSubquery = MonitorCheck::select('latency_ms')
-            ->where('monitor_id', $monitor->id)
-            ->where('checked_at', '>=', max($createdAt, $now->copy()->subDays(30)))
-            ->where('status', 'up')
-            ->whereNotNull('latency_ms')
-            ->orderBy('checked_at', 'desc')
-            ->limit(3000);
-        $avg30d = DB::table(DB::raw("({$avg30dSubquery->toSql()}) as sub"))
-            ->mergeBindings($avg30dSubquery->getQuery())
-            ->avg('latency_ms');
-        $monitorData['avg_response_30d'] = $avg30d ? round($avg30d, 2) : null;
-        
-        // All-time average (limit to recent 5000 checks max for performance)
-        $avgAllTimeSubquery = MonitorCheck::select('latency_ms')
-            ->where('monitor_id', $monitor->id)
-            ->where('status', 'up')
-            ->whereNotNull('latency_ms')
-            ->orderBy('checked_at', 'desc')
-            ->limit(5000);
-        $avgAllTime = DB::table(DB::raw("({$avgAllTimeSubquery->toSql()}) as sub"))
-            ->mergeBindings($avgAllTimeSubquery->getQuery())
-            ->avg('latency_ms');
-        $monitorData['avg_response_all_time'] = $avgAllTime ? round($avgAllTime, 2) : null;
+        // NOTE: Average response time calculations removed for performance
+        // Current response is available from the latest check in monitor->checks
+        // This drastically improves page load speed by eliminating 5 slow queries
 
         return response()->json([
             'success' => true,

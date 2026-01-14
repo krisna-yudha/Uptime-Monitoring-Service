@@ -91,40 +91,10 @@
 
     <!-- Stats Loading Skeleton -->
     <div class="stats-grid skeleton" v-if="loading">
-      <div class="stat-card skeleton-card" v-for="n in 6" :key="n">
+      <div class="stat-card skeleton-card" v-for="n in 2" :key="n">
         <div class="skeleton-line short"></div>
         <div class="skeleton-line mini"></div>
         <div class="skeleton-line medium"></div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-header">Avg. Response</div>
-        <div class="stat-subheader">(24-hour)</div>
-        <div class="stat-value">{{ avgResponse24h }}</div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-header">Uptime</div>
-        <div class="stat-subheader">(24-hour)</div>
-        <div class="stat-value uptime-value">{{ uptime24h }}%</div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-header">Uptime</div>
-        <div class="stat-subheader">(30-day)</div>
-        <div class="stat-value uptime-value">{{ uptime30d }}%</div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-header">Uptime</div>
-        <div class="stat-subheader">(1-year)</div>
-        <div class="stat-value uptime-value">{{ uptime1y }}%</div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-header">Cert Exp.</div>
-        <div class="stat-subheader">(SSL)</div>
-        <div class="stat-value cert-value">{{ certExpiry }}</div>
       </div>
     </div>
 
@@ -381,16 +351,8 @@ const statsData = computed(() => {
   const latestCheck = monitor.value?.checks?.[0]
   const currentLatency = latestCheck?.latency_ms || null
   
-  // Calculate uptime values
-  const uptime24h = getUptimeValue(24)
-  const uptime7d = getUptimeValue(168) // 7 days = 168 hours
-  const uptime1m = getUptimeValue(720) // 30 days = 720 hours
-  
-  // Calculate average response time for different periods
-  const avgResponse1h = getAverageResponse(1)
-  const avgResponse24h = getAverageResponse(24)
-  const avgResponse7d = getAverageResponse(168)
-  const avgResponse30d = getAverageResponse(720)
+  // NOTE: Uptime stats removed for faster loading
+  // Only showing current response and SSL cert expiry
   
   return [
     {
@@ -405,46 +367,6 @@ const statsData = computed(() => {
         icon: currentLatency < 200 ? '↗' : '↘',
         text: currentLatency < 200 ? 'Fast' : 'Slow'
       } : null
-    },
-    {
-      key: 'avg_response',
-      header: 'Avg. Response',
-      subheader: '(1-hour)',
-      value: avgResponse1h,
-      valueClass: 'response-value',
-      loading: false,
-      trend: avgResponse1h !== 'N/A' ? {
-        direction: parseFloat(avgResponse1h) < 200 ? 'up' : 'down',
-        icon: parseFloat(avgResponse1h) < 200 ? '↗' : '↘',
-        text: parseFloat(avgResponse1h) < 200 ? 'Improving' : 'Degrading'
-      } : null
-    },
-    {
-      key: 'uptime_24h',
-      header: 'Uptime',
-      subheader: '(24-hour)',
-      value: uptime24h,
-      valueClass: 'uptime-value',
-      loading: false,
-      trend: getUptimeTrend(uptime24h)
-    },
-    {
-      key: 'uptime_7d',
-      header: 'Uptime',
-      subheader: '(7-day)',
-      value: uptime7d,
-      valueClass: 'uptime-value',
-      loading: false,
-      trend: getUptimeTrend(uptime7d)
-    },
-    {
-      key: 'uptime_1m',
-      header: 'Uptime',
-      subheader: '(1-month)',
-      value: uptime1m,
-      valueClass: 'uptime-value',
-      loading: false,
-      trend: getUptimeTrend(uptime1m)
     },
     {
       key: 'cert_exp',
