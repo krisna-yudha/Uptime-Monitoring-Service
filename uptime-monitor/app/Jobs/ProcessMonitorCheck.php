@@ -581,8 +581,8 @@ class ProcessMonitorCheck implements ShouldQueue
                 ]);
 
                 // Send notification if threshold met
-                $notifyThreshold = isset($this->monitor->notify_after_retries) ? (int) $this->monitor->notify_after_retries : 10;
-                $effectiveThreshold = max(10, $notifyThreshold);
+                $notifyThreshold = isset($this->monitor->notify_after_retries) ? (int) $this->monitor->notify_after_retries : 3;
+                $effectiveThreshold = max(3, $notifyThreshold);
                 if ($this->monitor->consecutive_failures >= $effectiveThreshold) {
                     SendNotification::dispatch($this->monitor, 'down', $incident);
                 }
@@ -590,12 +590,13 @@ class ProcessMonitorCheck implements ShouldQueue
             return;
         }
 
-        if ($currentStatus === 'down' && $previousStatus !== 'down') {
-            // Start new incident when going from UP/UNKNOWN to DOWN (FR-12)
-            if (!$lastIncident) {
+        // Create incident only after 3 consecutive failures confirmed
+        if ($currentStatus === 'down' && !$lastIncident) {
+            // Only create incident after 3 consecutive failures (3 checks failed)
+            if ($this->monitor->consecutive_failures >= 3) {
                 $incidentDescription = $errorMessage 
-                    ? "Monitor went down: {$errorMessage}" 
-                    : "Monitor went down from status: {$previousStatus}";
+                    ? "Monitor confirmed down after 3 consecutive failures: {$errorMessage}" 
+                    : "Monitor confirmed down after 3 consecutive failures (from status: {$previousStatus})";
 
                 $incident = Incident::create([
                     'monitor_id' => $this->monitor->id,
@@ -606,20 +607,23 @@ class ProcessMonitorCheck implements ShouldQueue
                     'description' => $incidentDescription,
                 ]);
 
-                Log::info("New incident created", [
+                Log::info("New incident created after 3 consecutive failures", [
                     'monitor_id' => $this->monitor->id,
                     'incident_id' => $incident->id,
                     'previous_status' => $previousStatus,
                     'current_status' => $currentStatus,
+                    'consecutive_failures' => $this->monitor->consecutive_failures,
                 ]);
 
-                // Send notification only if consecutive failures meet threshold (FR-16: Anti-spam)
-                // Require at least 10 consecutive failures before triggering notifications to bots.
-                $notifyThreshold = isset($this->monitor->notify_after_retries) ? (int) $this->monitor->notify_after_retries : 10;
-                $effectiveThreshold = max(10, $notifyThreshold);
-                if ($this->monitor->consecutive_failures >= $effectiveThreshold) {
-                    SendNotification::dispatch($this->monitor, 'down', $incident);
-                }
+                // Send notification immediately when incident is created (at 3 failures)
+                SendNotification::dispatch($this->monitor, 'down', $incident);
+                
+                // Log that notification was triggered
+                Log::info("Notification dispatched after 3 consecutive failures", [
+                    'monitor_id' => $this->monitor->id,
+                    'incident_id' => $incident->id,
+                    'consecutive_failures' => $this->monitor->consecutive_failures,
+                ]);
 
                 // Critical Alert: Send special notification when service is down 20 times consecutively
                 // Only send if we haven't already sent a critical alert for this outage
@@ -640,8 +644,18 @@ class ProcessMonitorCheck implements ShouldQueue
                         }
                     }
                 }
+            } else {
+                // Log that we're still in failure state but not yet at threshold
+                Log::info("Monitor down but not creating incident yet", [
+                    'monitor_id' => $this->monitor->id,
+                    'consecutive_failures' => $this->monitor->consecutive_failures,
+                    'threshold' => 3,
+                    'message' => 'Waiting for 3 consecutive failures before creating incident'
+                ]);
             }
-        } else if ($currentStatus === 'up' && $previousStatus === 'down' && $lastIncident) {
+        }
+        
+        if ($currentStatus === 'up' && $previousStatus === 'down' && $lastIncident) {
             // Resolve existing incident when going from DOWN to UP (FR-13)
             $duration = now()->diffInSeconds($lastIncident->started_at);
             
@@ -1292,5 +1306,96 @@ class ProcessMonitorCheck implements ShouldQueue
         // Estimate downtime based on consecutive failures and check interval
         $estimatedDowntimeSeconds = $this->monitor->consecutive_failures * $this->monitor->interval_seconds;
         return (int) ceil($estimatedDowntimeSeconds / 60);
+    }
+
+    /**
+     * Get favicon URL from website
+     * Tries multiple methods to find the best quality icon
+     */
+    public static function getFaviconUrl(string $url): ?string
+    {
+        try {
+            $parsed = parse_url($url);
+            if (!isset($parsed['host'])) {
+                return null;
+            }
+
+            $scheme = $parsed['scheme'] ?? 'https';
+            $host = $parsed['host'];
+            $baseUrl = "{$scheme}://{$host}";
+
+            // Method 1: Try to fetch HTML and parse for icon links
+            try {
+                $response = Http::timeout(5)
+                    ->withoutVerifying()
+                    ->get($url);
+
+                if ($response->successful()) {
+                    $html = $response->body();
+
+                    // Look for apple-touch-icon (usually higher quality)
+                    if (preg_match('/<link[^>]+rel=["\']apple-touch-icon["\'][^>]+href=["\']([^"\']+)["\'][^>]*>/i', $html, $matches)) {
+                        $iconUrl = $matches[1];
+                        return self::resolveIconUrl($iconUrl, $baseUrl);
+                    }
+
+                    // Look for icon with sizes attribute (high res)
+                    if (preg_match('/<link[^>]+rel=["\']icon["\'][^>]+sizes=["\'][^"\'\']+["\'][^>]+href=["\']([^"\']+)["\'][^>]*>/i', $html, $matches)) {
+                        $iconUrl = $matches[1];
+                        return self::resolveIconUrl($iconUrl, $baseUrl);
+                    }
+
+                    // Look for shortcut icon
+                    if (preg_match('/<link[^>]+rel=["\'](?:shortcut )?icon["\'][^>]+href=["\']([^"\']+)["\'][^>]*>/i', $html, $matches)) {
+                        $iconUrl = $matches[1];
+                        return self::resolveIconUrl($iconUrl, $baseUrl);
+                    }
+                }
+            } catch (Exception $e) {
+                Log::debug('Failed to fetch HTML for favicon', ['url' => $url, 'error' => $e->getMessage()]);
+            }
+
+            // Method 2: Try standard favicon.ico location
+            $faviconUrl = "{$baseUrl}/favicon.ico";
+            try {
+                $response = Http::timeout(3)->withoutVerifying()->head($faviconUrl);
+                if ($response->successful()) {
+                    return $faviconUrl;
+                }
+            } catch (Exception $e) {
+                // Favicon.ico doesn't exist
+            }
+
+            // Method 3: Use Google's favicon service as fallback
+            return "https://www.google.com/s2/favicons?domain={$host}&sz=64";
+
+        } catch (Exception $e) {
+            Log::warning('Failed to get favicon', ['url' => $url, 'error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Resolve relative icon URL to absolute URL
+     */
+    private static function resolveIconUrl(string $iconUrl, string $baseUrl): string
+    {
+        // Already absolute URL
+        if (preg_match('/^https?:\/\//i', $iconUrl)) {
+            return $iconUrl;
+        }
+
+        // Protocol-relative URL (//domain.com/icon.png)
+        if (str_starts_with($iconUrl, '//')) {
+            return 'https:' . $iconUrl;
+        }
+
+        // Absolute path (/favicon.png)
+        if (str_starts_with($iconUrl, '/')) {
+            return $baseUrl . $iconUrl;
+        }
+
+        // Relative path (images/icon.png)
+        return $baseUrl . '/' . $iconUrl;
     }
 }

@@ -188,6 +188,16 @@
         title="Click to view monitor details"
       >
         <div class="monitor-header-grid">
+          <div class="monitor-icon-wrapper">
+            <img 
+              v-if="monitor.icon_url" 
+              :src="monitor.icon_url" 
+              :alt="monitor.name"
+              class="monitor-icon"
+              @error="handleIconError"
+            />
+            <span v-else class="monitor-type-icon">{{ getTypeIcon(monitor.type) }}</span>
+          </div>
           <div class="monitor-status-large">
             <span
               class="status-indicator-large"
@@ -1134,7 +1144,7 @@ async function manualRefresh() {
 function startAutoRefresh() {
   refreshInterval.value = setInterval(() => {
     fetchMonitorsSilently()
-  }, 30000) // Refresh every 30 seconds
+  }, 1000) // Refresh every 1 second for realtime updates
 }
 
 function stopAutoRefresh() {
@@ -1382,6 +1392,24 @@ watch(
 onUnmounted(() => {
   stopAutoRefresh()
 })
+
+// Helper function untuk icon fallback
+function getTypeIcon(type) {
+  const icons = {
+    'http': '🌐',
+    'https': '🔒',
+    'tcp': '🔌',
+    'ping': '📡',
+    'keyword': '🔍',
+    'push': '📨'
+  }
+  return icons[type] || '📊'
+}
+
+// Handle icon loading error
+function handleIconError(event) {
+  event.target.style.display = 'none'
+}
 </script>
 
 <style scoped>
@@ -1788,8 +1816,34 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.monitor-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  margin-bottom: 4px;
+}
+
+.monitor-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: white;
+  padding: 2px;
+}
+
+.monitor-type-icon {
+  font-size: 28px;
+  filter: brightness(1.8);
 }
 
 .status-indicator-large {

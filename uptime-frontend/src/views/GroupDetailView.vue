@@ -25,6 +25,16 @@
 
       <div class="monitors-list">
         <div v-for="m in monitors" :key="m.id" :class="['monitor-item','clickable', `status-${m.last_status || 'unknown'}`]" @click="openMonitor(m.id)">
+          <div class="monitor-icon-wrapper">
+            <img 
+              v-if="m.icon_url" 
+              :src="m.icon_url" 
+              :alt="m.name" 
+              class="monitor-icon"
+              @error="handleIconError($event, m)"
+            />
+            <span v-else class="monitor-type-icon">{{ getTypeIcon(m.type) }}</span>
+          </div>
           <div class="left">
             <h3>{{ m.name }}</h3>
             <p class="target">{{ m.target }}</p>
@@ -102,6 +112,23 @@ function openMonitor(id) {
 
 function refresh() {
   loadGroup()
+}
+
+function getTypeIcon(type) {
+  const icons = {
+    http: '🌐',
+    https: '🔒',
+    ping: '📡',
+    port: '🔌',
+    ssl: '🔐',
+    dns: '🌍'
+  }
+  return icons[type] || '📊'
+}
+
+function handleIconError(event, monitor) {
+  event.target.style.display = 'none'
+  // The v-else will automatically show the fallback emoji
 }
 
 onMounted(() => {
@@ -249,9 +276,33 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   border: 1px solid rgba(15,23,42,0.04);
   transition: transform .18s ease, box-shadow .18s ease;
   overflow: hidden;
+}
+
+.monitor-icon-wrapper {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(29,78,216,0.04));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.monitor-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.monitor-type-icon {
+  font-size: 20px;
+  line-height: 1;
 }
 
 /* Colored left accent bar indicating status */
@@ -281,6 +332,7 @@ onMounted(() => {
 
 .monitor-item:hover { transform: translateY(-6px); box-shadow: 0 18px 50px rgba(15,23,42,0.08); }
 
+.left { flex: 1; min-width: 0; }
 .left h3 { margin: 0; font-size: 1.05rem; color: #0f172a }
 .target { margin: 6px 0 0; color: var(--muted); font-size: .9rem; word-break: break-all; opacity: .9 }
 

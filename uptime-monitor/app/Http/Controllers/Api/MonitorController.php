@@ -155,6 +155,19 @@ class MonitorController extends Controller
             $data['interval_seconds'] = 1;
         }
 
+        // Auto-fetch favicon/icon for HTTP/HTTPS monitors if not provided
+        if (!isset($data['icon_url']) && in_array($data['type'], ['http', 'https', 'keyword'])) {
+            try {
+                $iconUrl = \App\Jobs\ProcessMonitorCheck::getFaviconUrl($data['target']);
+                if ($iconUrl) {
+                    $data['icon_url'] = $iconUrl;
+                }
+            } catch (\Exception $e) {
+                // Continue without icon if fetch fails
+                Log::debug('Failed to auto-fetch icon for monitor', ['error' => $e->getMessage()]);
+            }
+        }
+
         // Coerce config/tags/notification_channels if they're provided as JSON strings
         if (isset($data['config']) && is_string($data['config'])) {
             $decoded = json_decode($data['config'], true);

@@ -20,6 +20,7 @@ class Monitor extends Model
         'group_config',
         'type',
         'target',
+        'icon_url',
         'port',
         'config',
         'interval_seconds',
