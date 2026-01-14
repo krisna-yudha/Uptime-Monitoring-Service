@@ -255,14 +255,15 @@ class MonitorController extends Controller
             ], 403);
         }
 
+        // Optimized eager loading - only load essential data
+        // Removed incidents loading as it's not needed for detail page initial load
         $monitor->load([
             'creator:id,name,email',
             'actualCreator:id,name,email',
             'checks' => function ($query) {
-                $query->latest()->limit(10);
-            },
-            'incidents' => function ($query) {
-                $query->latest()->limit(5);
+                $query->select('id', 'monitor_id', 'checked_at', 'status', 'latency_ms', 'http_status', 'error_message')
+                      ->latest()
+                      ->limit(5); // Reduced from 10 to 5 for faster loading
             }
         ]);
 
