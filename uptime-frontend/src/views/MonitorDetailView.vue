@@ -388,7 +388,6 @@ const isPaused = computed(() => {
 
 // Lifecycle
 onMounted(async () => {
-  console.log('📱 Component mounted, loading monitor data...')
   await nextTick()
   await fetchMonitorData()
   // Start a lightweight fallback poll to ensure history keeps updating
@@ -400,8 +399,7 @@ onMounted(async () => {
     window.__monitorHelpers.forceFetchChecks = async (id) => {
       try {
         const response = await monitorStore.api.monitorChecks.getAll({ monitor_id: id || route.params.id, per_page: 100, sort: 'checked_at', order: 'desc', _t: Date.now() })
-        console.log('Helper: monitor-checks response for', id || route.params.id, response.data)
-        return response.data
+                return response.data
       } catch (e) {
         console.error('Helper fetch failed', e)
         throw e
@@ -412,8 +410,7 @@ onMounted(async () => {
       try {
         await monitorStore.fetchMonitor(id || route.params.id, { _t: Date.now() })
         await fetchStatusHistory()
-        console.log('Helper: forced UI refresh complete')
-      } catch (e) {
+              } catch (e) {
         console.error('Helper refresh failed', e)
       }
     }
@@ -438,7 +435,6 @@ onUnmounted(() => {
 watch(() => route.params.id, async (newId, oldId) => {
   // Stop all intervals when switching monitors to prevent data mixup
   if (oldId && newId !== oldId) {
-    console.log('🔄 Monitor ID changed from', oldId, 'to', newId, '- stopping all intervals')
     stopChartAutoRefresh()
     stopHistoryAutoRefresh()
     stopFirstCheckPoll()
@@ -455,7 +451,6 @@ watch(() => route.params.id, async (newId, oldId) => {
 
 watch(() => monitor.value, async (newVal) => {
   if (newVal && !chartLoading.value) {
-    console.log('🔄 Monitor data changed, refreshing chart...')
     await nextTick()
     await fetchChartData()
   }
@@ -584,35 +579,20 @@ function handleConfirmNo() {
 }
 
 function getCertExpiryDisplay() {
-  console.log('🔍 getCertExpiryDisplay called for:', monitor.value?.name)
-  
   if (!monitor.value) {
-    console.log('  → No monitor data')
     return 'N/A'
   }
-  
-  console.log('  → Monitor type:', monitor.value.type)
-  console.log('  → Is HTTPS?:', monitor.value.type === 'https')
   
   // Only show for HTTPS monitors
   if (monitor.value.type !== 'https') {
-    console.log('  → Not HTTPS, returning N/A')
     return 'N/A'
   }
-  
-  console.log('  → SSL cert expiry raw:', monitor.value.ssl_cert_expiry)
-  console.log('  → SSL cert expiry type:', typeof monitor.value.ssl_cert_expiry)
-  console.log('  → SSL cert issuer:', monitor.value.ssl_cert_issuer)
   
   // Check if SSL certificate info is available
   if (monitor.value.ssl_cert_expiry) {
     const expiryDate = new Date(monitor.value.ssl_cert_expiry)
     const now = new Date()
     const daysRemaining = Math.floor((expiryDate - now) / (1000 * 60 * 60 * 24))
-    
-    console.log('  → Expiry date parsed:', expiryDate)
-    console.log('  → Current date:', now)
-    console.log('  → Days remaining:', daysRemaining)
     
     if (daysRemaining < 0) {
       return 'Expired'
@@ -626,7 +606,6 @@ function getCertExpiryDisplay() {
   }
   
   // SSL cert not checked yet
-  console.log('  → SSL cert expiry is NULL/undefined, returning Not Checked')
   return 'Not Checked'
 }
 
@@ -735,8 +714,7 @@ async function fetchMonitorData() {
       // Auto-refresh will be started automatically after chart is created in fetchChartData
       // record last known checked time so live updates can detect new checks
       lastKnownCheckedAt.value = monitor.value.last_checked_at || null
-      console.log('✅ Monitor data and chart loaded successfully for', monitor.value.name)
-      // Ensure Pinia store currentMonitor reflects any normalized checks
+            // Ensure Pinia store currentMonitor reflects any normalized checks
       try {
         monitorStore.currentMonitor = monitor.value
       } catch (e) {
@@ -795,14 +773,6 @@ async function refreshMonitorData() {
           latency_ms: c.latency_ms ?? c.latency ?? c.response_time ?? c.response_time_ms ?? null
         }))
       }
-      
-      console.log('🔄 Monitor data refreshed:', {
-        id: result.data.id,
-        name: result.data.name,
-        status: result.data.last_status,
-        checked_at: result.data.last_checked_at,
-        current_latency: result.data.checks?.[0]?.latency_ms
-      })
     }
   } catch (err) {
     // Silent fail for background refresh
@@ -814,7 +784,6 @@ async function refreshMonitorData() {
 async function fetchStatusHistory() {
   try {
     const currentMonitorId = route.params.id
-    console.log('🔍 Fetching status history for monitor:', currentMonitorId)
     
     const response = await monitorStore.api.monitorChecks.getAll({
       monitor_id: currentMonitorId,
@@ -823,9 +792,6 @@ async function fetchStatusHistory() {
       order: 'desc',
       _t: Date.now()
     })
-    
-    console.log('📦 API Response:', response.data)
-    console.log('📦 Raw checks payload:', response.data.data)
     
       if (response.data.success) {
       let checks = []
@@ -850,8 +816,6 @@ async function fetchStatusHistory() {
       let uniqueChecks = Object.values(byId)
       uniqueChecks.sort((a, b) => new Date(b.checked_at) - new Date(a.checked_at))
 
-      console.log('📋 Status checks found (unique):', uniqueChecks.length)
-
       allStatusHistory.value = uniqueChecks.map(check => ({
         id: check.id,
         status: check.status,
@@ -874,12 +838,8 @@ async function fetchStatusHistory() {
 
       // Verify we're still viewing the same monitor before updating UI
       if (route.params.id != currentMonitorId) {
-        console.warn('⚠️ Route changed during fetch, discarding status history')
         return
       }
-      
-      console.log(`✅ Loaded ${allStatusHistory.value.length} status checks for monitor ${currentMonitorId}`)
-      console.log('📊 First check:', allStatusHistory.value[0])
       
       // Start history auto-refresh
       startHistoryAutoRefresh()
@@ -917,8 +877,6 @@ async function updateHistoryRealtime() {
     
     if (response.data.success) {
         const latestChecks = response.data.data.data || response.data.data || []
-
-        console.log('🔁 updateHistoryRealtime fetched', latestChecks.length, 'checks for monitor', currentMonitorId)
         
         // Verify we're still on the same monitor before updating
         if (route.params.id != currentMonitorId) {
@@ -948,18 +906,15 @@ async function updateHistoryRealtime() {
         })
 
         totalItems.value = allStatusHistory.value.length
-        console.log(`✅ updateHistoryRealtime added ${newAdded} new checks (total ${totalItems.value})`)
 
         // If we were polling for the first check and we got data, stop the polling
         if (pollingFirstCheck.value && totalItems.value > 0) {
           stopFirstCheckPoll()
-          console.log('✅ First checks received, stopped aggressive polling')
         }
         // If we added new checks, update lastKnownCheckedAt to the newest check's timestamp
         if (newAdded > 0 && allStatusHistory.value.length > 0) {
           try {
             lastKnownCheckedAt.value = allStatusHistory.value[0].checked_at || lastKnownCheckedAt.value
-            console.log('🔔 lastKnownCheckedAt updated to', lastKnownCheckedAt.value)
           } catch (e) {}
           // Trigger chart update when new checks arrive
           try {
@@ -990,20 +945,11 @@ function startChartAutoRefresh() {
   
   const refreshInterval = 1000 // Fixed 1 second auto-refresh (realtime)
   
-  console.log(`🔄 Starting chart auto-refresh - Refreshing every ${refreshInterval/1000}s`)
-  
   chartRefreshInterval.value = setInterval(() => {
     if (monitor.value && !isUpdating.value) {
-      const timestamp = new Date().toLocaleTimeString()
-      console.log(`⏰ [${timestamp}] Triggering chart auto-refresh...`)
       updateChartRealtime()
       // Also refresh monitor data to update last_checked_at and status
       refreshMonitorData()
-    } else {
-      console.log('⏭️ Skipping auto-refresh - conditions not met:', {
-        hasMonitor: !!monitor.value,
-        notUpdating: !isUpdating.value
-      })
     }
   }, refreshInterval)
 }
@@ -1036,8 +982,6 @@ function startHistoryAutoRefresh() {
     }
   }
   
-  console.log(`🔄 Starting history auto-refresh - Refreshing every ${refreshInterval/1000}s (monitor interval: ${monitor.value?.interval_seconds}s)`)
-  
   historyRefreshInterval.value = setInterval(() => {
     if (!loading.value && monitor.value && !chartLoading.value) {
       updateHistoryRealtime()
@@ -1059,9 +1003,7 @@ function startFirstCheckPoll() {
 
   pollingFirstCheck.value = true
   firstCheckPollAttempts = 0
-  console.log('🔎 Starting aggressive first-check poll (1s interval, max 20s)')
-
-  firstCheckPollInterval = setInterval(async () => {
+    firstCheckPollInterval = setInterval(async () => {
     firstCheckPollAttempts++
     try {
       await updateHistoryRealtime()
@@ -1071,7 +1013,6 @@ function startFirstCheckPoll() {
 
     if (allStatusHistory.value.length > 0 || firstCheckPollAttempts >= 20) {
       stopFirstCheckPoll()
-      console.log('⏹️ First-check poll stopped (attempts:', firstCheckPollAttempts, ')')
     }
   }, 1000)
 }
@@ -1090,15 +1031,13 @@ function ensureHistoryPolling() {
   stopFallbackHistoryPolling()
   // Only start fallback if no primary history refresh is active
   if (!historyRefreshInterval.value) {
-    console.log('🔁 Starting fallback history poll (3s for faster capture)')
-    fallbackHistoryPollInterval.value = setInterval(async () => {
+        fallbackHistoryPollInterval.value = setInterval(async () => {
       try {
         await updateHistoryRealtime()
         // If primary historyAutoRefresh starts, stop the fallback
         if (historyRefreshInterval.value) {
           stopFallbackHistoryPolling()
-          console.log('🔁 Primary history auto-refresh detected, stopped fallback poll')
-        }
+                  }
       } catch (e) {
         // ignore errors; fallback should be resilient
       }
@@ -1119,12 +1058,10 @@ async function updateChartRealtime() {
   // Debounce reduced to 300ms for faster updates in production
   const now = Date.now()
   if (now - lastUpdateTime.value < 300) {
-    console.log('⏭️ Skipping update - too soon (debounce)')
     return
   }
   
   if (isUpdating.value) {
-    console.log('⏭️ Update already in progress')
     return
   }
   
@@ -1156,7 +1093,6 @@ async function updateChartRealtime() {
       checks = checks.filter(check => check.monitor_id == currentMonitorId)
       
       if (checks.length === 0) {
-        console.log('⚠️ No data for realtime update')
         isUpdating.value = false
         return
       }
@@ -1171,7 +1107,6 @@ async function updateChartRealtime() {
       drawChart(dataPoints)
       
       lastUpdateTime.value = now
-      console.log('✅ Chart updated successfully at', new Date().toLocaleTimeString())
     }
   } catch (err) {
     console.error('❌ Auto-refresh failed:', err)
@@ -1198,9 +1133,7 @@ async function fetchChartData() {
   // Destroy existing chart
   destroyChart()
   
-  console.log('📊 Fetching chart data for period:', selectedPeriod.value)
-  
-  try {
+    try {
     const response = await monitorStore.api.monitorChecks.getAll({
       monitor_id: route.params.id,
       per_page: getPeriodLimit(selectedPeriod.value),
@@ -1209,14 +1142,10 @@ async function fetchChartData() {
       , _t: Date.now()
     })
     
-    console.log('📦 Chart API Response:', response.data)
-    
-    if (response.data.success) {
+        if (response.data.success) {
       let checks = response.data.data.data || response.data.data || []
       
-      console.log('✅ Chart data loaded:', checks.length, 'data points')
-      
-      if (checks.length === 0) {
+            if (checks.length === 0) {
         console.warn('⚠️ No data available for chart')
       } else {
         // Convert to chart data points
@@ -1225,9 +1154,7 @@ async function fetchChartData() {
           value: (check.latency_ms ?? check.latency ?? check.response_time ?? check.response_time_ms ?? 0) || 0
         }))
         
-        console.log('📈 Drawing chart with', dataPoints.length, 'points')
-        
-        // Draw chart
+                // Draw chart
         drawChart(dataPoints)
       }
     }
@@ -1240,19 +1167,15 @@ async function fetchChartData() {
     await new Promise(resolve => setTimeout(resolve, 500))
     if (monitor.value) {
       startChartAutoRefresh()
-      console.log('✅ Auto-refresh restarted after chart creation')
-    }
+          }
   }
 }
 
 function drawChart(dataPoints) {
   if (!dataPoints || dataPoints.length === 0) {
-    console.log('⚠️ No data points to draw')
     chartData.value = null
     return
   }
-  
-  console.log('🎨 Drawing chart with', dataPoints.length, 'data points')
   
   // Prepare labels and data for Chart.js
   const labels = dataPoints.map(d => formatChartTime(d.time, selectedPeriod.value))
@@ -1342,8 +1265,6 @@ function drawChart(dataPoints) {
       intersect: false
     }
   }
-  
-  console.log('✅ Chart configured successfully')
 }
 
 function getPeriodLimit(period) {
@@ -1402,9 +1323,7 @@ function destroyChart() {
 async function selectPeriod(period) {
   if (selectedPeriod.value === period) return
   
-  console.log('🔄 Switching period from', selectedPeriod.value, 'to', period)
-  
-  // Stop auto-refresh and reset update state
+    // Stop auto-refresh and reset update state
   stopChartAutoRefresh()
   isUpdating.value = false
   lastUpdateTime.value = 0
@@ -1425,8 +1344,7 @@ async function selectPeriod(period) {
   // Restart auto-refresh
   if (monitor.value && chartData.value) {
     startChartAutoRefresh()
-    console.log('✅ Period switched successfully to', period)
-  }
+      }
 }
 
 async function refreshChart() {
@@ -1441,8 +1359,7 @@ async function toggleMonitor() {
       // Resume monitor
       const result = await monitorStore.resumeMonitor(monitor.value.id)
       if (result.success) {
-        console.log('✅ Monitor resumed successfully')
-        showNotif('Monitor resumed successfully', 'success')
+                showNotif('Monitor resumed successfully', 'success')
       } else {
         console.error('❌ Failed to resume monitor:', result.message)
         showNotif('Failed to resume monitor', 'error')
@@ -1451,8 +1368,7 @@ async function toggleMonitor() {
       // Pause monitor for 60 minutes
       const result = await monitorStore.pauseMonitor(monitor.value.id, 60)
       if (result.success) {
-        console.log('✅ Monitor paused successfully')
-        showNotif('Monitor paused for 60 minutes', 'success')
+                showNotif('Monitor paused for 60 minutes', 'success')
       } else {
         console.error('❌ Failed to pause monitor:', result.message)
         showNotif('Failed to pause monitor', 'error')
@@ -1471,12 +1387,10 @@ async function deleteMonitor() {
   
   showConfirm(`Are you sure you want to delete "${monitor.value.name}"?`, async () => {
     try {
-      console.log('🗑️ Deleting monitor:', monitor.value.id)
-      const result = await monitorStore.deleteMonitor(monitor.value.id)
+            const result = await monitorStore.deleteMonitor(monitor.value.id)
       
       if (result.success) {
-        console.log('✅ Monitor deleted successfully')
-        showNotif('Monitor deleted successfully', 'success')
+                showNotif('Monitor deleted successfully', 'success')
         setTimeout(() => {
           router.push('/monitors')
         }, 1500)
@@ -1528,16 +1442,12 @@ async function clearData() {
   
   showConfirm('Are you sure you want to clear status history for this monitor?', async () => {
     try {
-      console.log('🗑️ Clearing status history for monitor:', monitor.value.id)
-      
-      // Clear local status history data
+            // Clear local status history data
       allStatusHistory.value = []
       totalItems.value = 0
       currentPage.value = 1
       
-      console.log('✅ Status history cleared successfully')
-      
-      // Show success message
+            // Show success message
       showNotif('Status history cleared successfully', 'success')
     } catch (err) {
       console.error('❌ Error clearing status history:', err)
