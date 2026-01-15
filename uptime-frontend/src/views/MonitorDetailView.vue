@@ -390,8 +390,8 @@ const isPaused = computed(() => {
 onMounted(async () => {
   await nextTick()
   await fetchMonitorData()
-  // Start a lightweight fallback poll to ensure history keeps updating
-  ensureHistoryPolling()
+  // Disabled fallback polling to reduce API load - primary auto-refresh is sufficient
+  // ensureHistoryPolling()
   // Auto-refresh akan di-start setelah monitor berhasil di-load
   // Expose small helpers for debugging from DevTools
   try {
@@ -844,10 +844,11 @@ async function fetchStatusHistory() {
       // Start history auto-refresh
       startHistoryAutoRefresh()
 
-      // If no checks yet, start a short aggressive poll to surface the first checks quickly
-      if (allStatusHistory.value.length === 0) {
-        startFirstCheckPoll()
-      }
+      // Disabled aggressive first check poll to reduce API load
+      // Will rely on regular auto-refresh instead
+      // if (allStatusHistory.value.length === 0) {
+      //   startFirstCheckPoll()
+      // }
     } else {
       console.warn('❌ Failed to fetch monitor checks:', response.data.message)
       allStatusHistory.value = []
@@ -943,7 +944,8 @@ function startChartAutoRefresh() {
     return
   }
   
-  const refreshInterval = 1000 // Fixed 1 second auto-refresh (realtime)
+  // Reduced from 1s to 5s to prevent API overload in production
+  const refreshInterval = 5000 // 5 second auto-refresh
   
   chartRefreshInterval.value = setInterval(() => {
     if (monitor.value && !isUpdating.value) {
@@ -964,21 +966,21 @@ function stopChartAutoRefresh() {
 function startHistoryAutoRefresh() {
   stopHistoryAutoRefresh()
   
-  // Optimize refresh intervals for faster data capture in production
-  let refreshInterval = 1500 // Default 1.5 seconds for fast capture
+  // Optimized intervals to prevent API overload
+  let refreshInterval = 10000 // Default 10 seconds (reduced from 1.5s)
   
   if (monitor.value?.interval_seconds) {
     const monitorInterval = monitor.value.interval_seconds * 1000
     
-    // For 10s monitors, check every 1s to catch data immediately
+    // Match or slightly exceed monitor interval to avoid unnecessary requests
     if (monitorInterval <= 10000) {
-      refreshInterval = 1000 // 1 second for 10s monitors
+      refreshInterval = 8000 // 8 seconds for 10s monitors (reduced from 1s)
     } else if (monitorInterval <= 30000) {
-      refreshInterval = 2000 // 2 seconds for 30s monitors
+      refreshInterval = 12000 // 12 seconds for 30s monitors
     } else if (monitorInterval <= 60000) {
-      refreshInterval = 5000 // 5 seconds for 1min monitors
+      refreshInterval = 20000 // 20 seconds for 1min monitors
     } else {
-      refreshInterval = 10000 // 10 seconds for slower monitors
+      refreshInterval = 30000 // 30 seconds for slower monitors
     }
   }
   
@@ -1055,9 +1057,9 @@ function stopFallbackHistoryPolling() {
 async function updateChartRealtime() {
   if (chartLoading.value) return
   
-  // Debounce reduced to 300ms for faster updates in production
+  // Debounce 2 seconds to prevent excessive API calls
   const now = Date.now()
-  if (now - lastUpdateTime.value < 300) {
+  if (now - lastUpdateTime.value < 2000) {
     return
   }
   
