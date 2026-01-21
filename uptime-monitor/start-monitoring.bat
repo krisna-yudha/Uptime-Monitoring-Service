@@ -32,7 +32,7 @@ timeout /t 2 /nobreak >nul
 
 REM Start Notification Worker in background
 echo [%time%] 4/5 Starting Notification Worker...
-start "Notification Worker" /min cmd /c "php artisan worker:notifications --verbose"
+start "Notification Worker" cmd /k "php artisan worker:notifications --verbose"
 timeout /t 2 /nobreak >nul
 
 REM Start Frontend Dev Server (optional - comment out if not needed)

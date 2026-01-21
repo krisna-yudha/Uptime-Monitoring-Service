@@ -22,20 +22,33 @@
               <div class="info-header">
                 <div class="info-icon">📊</div>
                 <h3>Aggregation Status</h3>
+                <span class="info-tooltip" title="Agregasi menggabungkan data monitoring mentah menjadi ringkasan statistik untuk performa lebih baik dan efisiensi penyimpanan">
+                  <span class="tooltip-icon">ℹ️</span>
+                </span>
               </div>
+              
+              <!-- Info Box
+              <div class="guide-box">
+                <div class="guide-icon">💡</div>
+                <div class="guide-text">
+                  <strong>Apa itu Agregasi?</strong>
+                  <p>Agregasi merangkum data monitoring mentah ke dalam interval waktu berbeda (menit, jam, hari) untuk meningkatkan performa query dan mengurangi penggunaan penyimpanan.</p>
+                </div>
+              </div> -->
+              
               <div class="info-content">
-                <div class="info-row">
+                <div class="info-row" title="Ketika diaktifkan, sistem otomatis mengagregasi data monitoring pada interval terjadwal">
                   <span class="info-label">Auto Aggregation:</span>
                   <span class="info-value" :class="settings.autoAggregate ? 'enabled' : 'disabled'">
                     {{ settings.autoAggregate ? '✓ Enabled' : '✗ Disabled' }}
                   </span>
                 </div>
-                <div class="info-row" v-if="settings.autoAggregate">
+                <div class="info-row" v-if="settings.autoAggregate" title="Interval agregasi yang sedang berjalan saat ini">
                   <span class="info-label">Active Intervals:</span>
                   <div class="interval-badges">
-                    <span v-if="settings.intervals.minute" class="interval-badge minute">Minute</span>
-                    <span v-if="settings.intervals.hour" class="interval-badge hour">Hour</span>
-                    <span v-if="settings.intervals.day" class="interval-badge day">Day</span>
+                    <span v-if="settings.intervals.minute" class="interval-badge minute" title="Agregasi data setiap menit untuk analisis jangka pendek">Minute</span>
+                    <span v-if="settings.intervals.hour" class="interval-badge hour" title="Agregasi data setiap jam untuk tren jangka menengah">Hour</span>
+                    <span v-if="settings.intervals.day" class="interval-badge day" title="Agregasi data harian untuk analisis historis jangka panjang">Day</span>
                     <span v-if="!settings.intervals.minute && !settings.intervals.hour && !settings.intervals.day" class="interval-badge none">None</span>
                   </div>
                 </div>
@@ -47,25 +60,38 @@
               <div class="info-header">
                 <div class="info-icon">🗄️</div>
                 <h3>Retention Policy</h3>
+                <span class="info-tooltip" title="Kebijakan retensi menentukan berapa lama berbagai jenis data disimpan sebelum pembersihan otomatis">
+                  <span class="tooltip-icon">ℹ️</span>
+                </span>
               </div>
+              
+              <!-- Info Box
+              <div class="guide-box">
+                <div class="guide-icon">💡</div>
+                <div class="guide-text">
+                  <strong>Mengapa Retensi Penting?</strong>
+                  <p>Data lama secara otomatis dibersihkan berdasarkan kebijakan ini untuk mencegah database membengkak, sambil tetap menyimpan data agregat penting untuk analisis jangka panjang.</p>
+                </div>
+              </div> -->
+              
               <div class="info-content">
-                <div class="info-row">
+                <div class="info-row" title="Hasil pengecekan monitoring individual (detail tertinggi, volume terbesar)">
                   <span class="info-label">Raw Checks:</span>
                   <span class="info-value retention">{{ formatRetention(settings.retention.rawChecks, settings.retention.rawChecksUnit) }}</span>
                 </div>
-                <div class="info-row">
+                <div class="info-row" title="Log monitoring detail dan riwayat kejadian">
                   <span class="info-label">Raw Logs:</span>
                   <span class="info-value retention">{{ formatRetention(settings.retention.rawLogs, settings.retention.rawLogsUnit) }}</span>
                 </div>
-                <div class="info-row">
+                <div class="info-row" title="Statistik agregat yang dikelompokkan per interval menit">
                   <span class="info-label">Minute Aggregates:</span>
                   <span class="info-value retention">{{ formatRetention(settings.retention.minuteAggregates, settings.retention.minuteAggregatesUnit) }}</span>
                 </div>
-                <div class="info-row">
+                <div class="info-row" title="Statistik agregat yang dikelompokkan per interval jam">
                   <span class="info-label">Hour Aggregates:</span>
                   <span class="info-value retention">{{ formatRetention(settings.retention.hourAggregates, settings.retention.hourAggregatesUnit) }}</span>
                 </div>
-                <div class="info-row">
+                <div class="info-row" title="Statistik agregat yang dikelompokkan per interval hari (riwayat jangka panjang)">
                   <span class="info-label">Day Aggregates:</span>
                   <span class="info-value retention">{{ formatRetention(settings.retention.dayAggregates, settings.retention.dayAggregatesUnit) }}</span>
                 </div>
@@ -83,10 +109,15 @@
         </div>
 
         <div class="settings-card">
-          <div class="setting-item">
+          <div class="setting-item" title="Aktifkan untuk menjalankan job agregasi otomatis melalui Laravel scheduler">
             <div class="setting-label">
-              <label for="auto-aggregate">Auto Aggregation</label>
-              <p class="setting-description">Automatically aggregate data based on scheduler</p>
+              <label for="auto-aggregate">
+                Auto Aggregation
+                <span class="info-tooltip" title="Ketika diaktifkan, agregasi berjalan otomatis pada waktu terjadwal. Ketika dinonaktifkan, Anda harus menjalankan agregasi secara manual.">
+                  <span class="tooltip-icon">ℹ️</span>
+                </span>
+              </label>
+              <p class="setting-description">Otomatis agregasi data berdasarkan scheduler (direkomendasikan untuk production)</p>
             </div>
             <div class="setting-control">
               <label class="switch">
@@ -104,36 +135,41 @@
 
           <div class="setting-item" :class="{ disabled: !settings.autoAggregate }">
             <div class="setting-label">
-              <label>Aggregation Intervals</label>
-              <p class="setting-description">Select which aggregation levels to run</p>
+              <label>
+                Aggregation Intervals
+                <span class="info-tooltip" title="Pilih interval waktu mana yang akan diagregasi. Lebih banyak interval = granularitas lebih baik tapi lebih banyak pemrosesan.">
+                  <span class="tooltip-icon">ℹ️</span>
+                </span>
+              </label>
+              <p class="setting-description">Pilih level agregasi mana yang akan dijalankan (aktifkan auto-aggregation terlebih dahulu)</p>
             </div>
             <div class="setting-control checkbox-group">
-              <label class="checkbox-label">
+              <label class="checkbox-label" title="Agregasi data monitoring setiap menit untuk analisis jangka pendek yang detail">
                 <input 
                   type="checkbox" 
                   v-model="settings.intervals.minute" 
                   :disabled="!settings.autoAggregate"
                   @change="settingsChanged = true"
                 >
-                <span>Minute (Every 1 minute)</span>
+                <span>Minute (Setiap 1 menit) - Terbaik untuk dashboard real-time</span>
               </label>
-              <label class="checkbox-label">
+              <label class="checkbox-label" title="Agregasi data monitoring setiap jam untuk analisis tren jangka menengah">
                 <input 
                   type="checkbox" 
                   v-model="settings.intervals.hour" 
                   :disabled="!settings.autoAggregate"
                   @change="settingsChanged = true"
                 >
-                <span>Hour (Every hour)</span>
+                <span>Hour (Setiap jam) - Bagus untuk analisis tren</span>
               </label>
-              <label class="checkbox-label">
+              <label class="checkbox-label" title="Agregasi data monitoring harian untuk laporan historis jangka panjang">
                 <input 
                   type="checkbox" 
                   v-model="settings.intervals.day" 
                   :disabled="!settings.autoAggregate"
                   @change="settingsChanged = true"
                 >
-                <span>Day (Daily at 01:00 AM)</span>
+                <span>Day (Harian jam 01:00) - Penting untuk data historis</span>
               </label>
             </div>
           </div>
@@ -2024,5 +2060,239 @@ input:focus + .slider {
     width: 100%;
     text-align: center;
   }
+}
+
+/* Tooltip Styles */
+.info-tooltip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  cursor: help;
+  position: relative;
+}
+
+.tooltip-icon {
+  font-size: 16px;
+  opacity: 0.7;
+  transition: all 0.3s ease;
+  filter: grayscale(50%);
+}
+
+.info-tooltip:hover .tooltip-icon {
+  opacity: 1;
+  filter: grayscale(0%);
+  transform: scale(1.2);
+}
+
+.info-tooltip::before {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.8);
+  opacity: 0;
+  visibility: hidden;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  color: white;
+  padding: 14px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: normal;
+  width: 320px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 1000;
+  pointer-events: none;
+  line-height: 1.6;
+}
+
+.info-tooltip::after {
+  content: '';
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.8);
+  opacity: 0;
+  visibility: hidden;
+  border: 8px solid transparent;
+  border-bottom-color: #2c3e50;
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.info-tooltip:hover::before,
+.info-tooltip:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) scale(1);
+}
+
+/* Guide Box Styles */
+.guide-box {
+  display: flex;
+  gap: 16px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #fff9e6 0%, #fff3cd 100%);
+  border: 2px solid #ffc107;
+  border-left: 6px solid #ff9800;
+  border-radius: 12px;
+  margin-bottom: 22px;
+  box-shadow: 0 4px 16px rgba(255, 152, 0, 0.2);
+  animation: slideInDown 0.5s ease;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.guide-icon {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.guide-text {
+  flex: 1;
+}
+
+.guide-text strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: #e65100;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.guide-text p {
+  margin: 0;
+  font-size: 14px;
+  color: #5d4037;
+  line-height: 1.7;
+  font-weight: 500;
+}
+
+/* Enhanced Info Header */
+.info-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e3f2fd;
+  position: relative;
+}
+
+.info-header h3 {
+  flex: 1;
+}
+
+/* Enhanced hover effects for info rows with tooltips */
+.info-row[title] {
+  cursor: help;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.info-row[title]:hover {
+  background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%);
+  border-color: #2196f3;
+  transform: translateX(4px);
+}
+
+.info-row[title]:hover::before {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  opacity: 0;
+  animation: fadeInUp 0.3s ease forwards;
+  animation-delay: 0.6s;
+  pointer-events: none;
+  line-height: 1.6;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Enhanced interval badges with hover effects */
+.interval-badge[title] {
+  cursor: help;
+  transition: all 0.3s ease;
+}
+
+.interval-badge[title]:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* Enhanced setting items with tooltips */
+.setting-item[title] {
+  cursor: help;
+  transition: all 0.3s ease;
+}
+
+.setting-item[title]:hover {
+  background: linear-gradient(135deg, #f8f9ff 0%, #fff 100%);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.2);
+  transform: translateY(-2px);
+}
+
+/* Enhanced checkbox labels with tooltips */
+.checkbox-label[title] {
+  cursor: help;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.checkbox-label[title]:hover {
+  background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%);
+  border-color: #2196f3;
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.2);
+  transform: translateX(6px);
+}
+
+/* Enhanced setting label with tooltip */
+.setting-label label {
+  display: flex;
+  align-items: center;
 }
 </style>

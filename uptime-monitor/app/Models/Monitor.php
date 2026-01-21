@@ -24,6 +24,7 @@ class Monitor extends Model
         'port',
         'config',
         'interval_seconds',
+        'priority',
         'timeout_ms',
         'retries',
         'notify_after_retries',
@@ -250,5 +251,41 @@ class Monitor extends Model
         }
 
         return $grouped;
+    }
+
+    /**
+     * Get the check interval in seconds based on priority
+     * Priority levels:
+     * 1 = 1 second (critical/default)
+     * 2 = 60 seconds (1 minute)
+     * 3 = 300 seconds (5 minutes)
+     * 4 = 1800 seconds (30 minutes)
+     * 5 = 3600 seconds (1 hour)
+     */
+    public function getCheckIntervalSeconds(): int
+    {
+        return match ($this->priority ?? 1) {
+            1 => 1,
+            2 => 60,
+            3 => 300,
+            4 => 1800,
+            5 => 3600,
+            default => 1,
+        };
+    }
+
+    /**
+     * Get priority label
+     */
+    public function getPriorityLabelAttribute(): string
+    {
+        return match ($this->priority ?? 1) {
+            1 => 'Critical (1s)',
+            2 => 'High (1min)',
+            3 => 'Medium (5min)',
+            4 => 'Low (30min)',
+            5 => 'Very Low (1hour)',
+            default => 'Critical (1s)',
+        };
     }
 }

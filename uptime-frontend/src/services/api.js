@@ -1,8 +1,20 @@
 import axios from 'axios'
 
+const host = window.location.hostname
+
+// Auto-detect backend URL based on access method:
+// 1) If user accesses via Tailscale (100.x.x.x) → use that host
+// 2) If user accesses via LAN (192.168.x.x / 10.x.x.x) → use that host
+// 3) Otherwise, use env variable
+// 4) If env is empty, fallback to localhost
+const baseURL =
+  host.startsWith('100.') || host.startsWith('192.168.') || host.startsWith('10.')
+    ? `http://${host}:8000/api`
+    : (import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000/api')
+
 // Create axios instance
 const api = axios.create({
-  baseURL: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000/api',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'

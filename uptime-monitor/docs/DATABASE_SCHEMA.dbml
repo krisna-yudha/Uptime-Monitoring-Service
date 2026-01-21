@@ -1,0 +1,339 @@
+// Uptime Monitoring System Database Schema
+// Database Markup Language (DBML)
+// Docs: https://dbml.dbdiagram.io/docs
+// Visualize: https://dbdiagram.io/
+
+Project uptime_monitor {
+  database_type: 'PostgreSQL'
+  Note: '''
+    # Uptime Monitoring System
+    5-tier priority based monitoring system
+    Created: 2026-01-19
+  '''
+}
+
+// ============================================
+// USERS & AUTHENTICATION
+// ============================================
+
+Table users {
+  id bigint [primary key, increment]
+  name varchar(255) [not null]
+  email varchar(255) [unique, not null]
+  password varchar(255) [not null]
+  role varchar(50) [default: 'user', note: 'admin or user']
+  email_verified_at timestamp
+  remember_token varchar(100)
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Note: 'System users with role-based access control'
+}
+
+// ============================================
+// MONITORS (Main Entity)
+// ============================================
+
+Table monitors {
+  id bigint [primary key, increment]
+  name varchar(255) [not null]
+  group_name varchar(255)
+  group_description text
+  group_config json
+  type varchar(50) [not null, note: 'http, https, tcp, ping, keyword, push']
+  target text [not null, note: 'URL, IP, or Host to monitor']
+  icon_url varchar(500)
+  port integer [note: 'For TCP monitoring']
+  config json [note: 'Monitor-specific configuration']
+  interval_seconds integer [default: 1, note: 'Legacy interval field']
+  priority tinyint [default: 1, note: '⭐ 1=1s, 2=60s, 3=5min, 4=30min, 5=1hr']
+  timeout_ms integer [default: 5000]
+  retries integer [default: 3]
+  notify_after_retries integer
+  consecutive_failures integer [default: 0]
+  enabled boolean [default: true]
+  is_public boolean [default: false]
+  tags json
+  created_by bigint [ref: > users.id, note: 'ON DELETE SET NULL']
+  actual_created_by bigint [ref: > users.id, note: 'ON DELETE SET NULL']
+  heartbeat_key varchar(255) [unique]
+  last_status varchar(50) [note: 'up, down, invalid, validating, unknown']
+  last_error text
+  last_checked_at timestamp
+  next_check_at timestamp
+  pause_until timestamp
+  ssl_cert_expiry timestamp
+  ssl_cert_issuer varchar(255)
+  ssl_checked_at timestamp
+  notification_channels json [note: 'Array of notification channel IDs']
+  last_notification_sent timestamp
+  last_critical_alert_sent timestamp
+  error_message text
+  last_error_at timestamp
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Indexes {
+    (type, enabled) [name: 'idx_monitors_type_enabled']
+    last_checked_at [name: 'idx_monitors_last_checked']
+    next_check_at [name: 'idx_monitors_next_check']
+    priority [name: 'idx_monitors_priority']
+  }
+  
+  Note: '''
+    Main monitoring entity with 5-tier priority system.
+    Priority determines check interval dynamically.
+  '''
+}
+
+// ============================================
+// MONITOR CHECKS (Check Results)
+// ============================================
+
+Table monitor_checks {
+  id bigint [primary key, increment]
+  monitor_id bigint [ref: > monitors.id, not null, note: 'ON DELETE CASCADE']
+  checked_at timestamp [not null]
+  status varchar(50) [not null, note: 'up, down, invalid']
+  latency_ms integer [note: 'Response time in milliseconds']
+  http_status integer [note: 'HTTP status code']
+  error_message text
+  response_size integer [note: 'Response size in bytes']
+  region varchar(50) [default: 'local']
+  meta json [note: 'Additional metadata']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Indexes {
+    (monitor_id, checked_at) [name: 'idx_checks_monitor_time']
+    status [name: 'idx_checks_status']
+    checked_at [name: 'idx_checks_time']
+  }
+  
+  Note: 'Individual check results with latency and status data'
+}
+
+// ============================================
+// INCIDENTS (Downtime Tracking)
+// ============================================
+
+Table incidents {
+  id bigint [primary key, increment]
+  monitor_id bigint [ref: > monitors.id, not null, note: 'ON DELETE CASCADE']
+  started_at timestamp [not null]
+  ended_at timestamp
+  resolved boolean [default: false]
+  status varchar(50) [note: 'open, resolved, acknowledged']
+  alert_status varchar(50)
+  acknowledged_at timestamp
+  acknowledged_by bigint [ref: > users.id, note: 'ON DELETE SET NULL']
+  alert_log json [note: 'Log of alerts sent']
+  description text
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Indexes {
+    (monitor_id, started_at) [name: 'idx_incidents_monitor_start']
+    resolved [name: 'idx_incidents_resolved']
+    status [name: 'idx_incidents_status']
+  }
+  
+  Note: 'Tracks downtime incidents and their resolution'
+}
+
+// ============================================
+// MONITOR METRICS (Real-time Metrics)
+// ============================================
+
+Table monitor_metrics {
+  id bigint [primary key, increment]
+  monitor_id bigint [ref: > monitors.id, not null, note: 'ON DELETE CASCADE']
+  period_start timestamp [not null]
+  period_end timestamp [not null]
+  avg_response_time_ms decimal(10,2)
+  p95_response_time_ms decimal(10,2) [note: '95th percentile response time']
+  uptime_seconds integer [default: 0]
+  downtime_seconds integer [default: 0]
+  checks_count integer [default: 0]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Indexes {
+    (monitor_id, period_start) [name: 'idx_metrics_monitor_period']
+  }
+  
+  Note: 'Real-time metrics for monitoring performance'
+}
+
+// ============================================
+// MONITOR METRICS AGGREGATED (Multi-interval)
+// ============================================
+
+Table monitor_metrics_aggregated {
+  id bigint [primary key, increment]
+  monitor_id bigint [ref: > monitors.id, not null, note: 'ON DELETE CASCADE']
+  interval varchar(20) [not null, note: 'minute, hour, day']
+  period_start timestamp [not null]
+  period_end timestamp [not null]
+  total_checks integer [default: 0]
+  successful_checks integer [default: 0]
+  failed_checks integer [default: 0]
+  uptime_percentage decimal(5,2)
+  avg_response_time decimal(10,3)
+  min_response_time decimal(10,3)
+  max_response_time decimal(10,3)
+  median_response_time decimal(10,3)
+  incident_count integer [default: 0]
+  total_downtime_seconds decimal(15,2)
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Indexes {
+    (monitor_id, interval, period_start) [unique, name: 'idx_metrics_agg_unique']
+  }
+  
+  Note: '''
+    Aggregated metrics calculated at different intervals.
+    Used for historical analytics and trend analysis.
+  '''
+}
+
+// ============================================
+// MONITORING LOGS (Activity Logs)
+// ============================================
+
+Table monitoring_logs {
+  id bigint [primary key, increment]
+  monitor_id bigint [ref: > monitors.id, not null, note: 'ON DELETE CASCADE']
+  event_type varchar(100) [not null, note: 'status_change, ssl_expiry, etc']
+  status varchar(50)
+  log_data json
+  response_time decimal(10,3)
+  error_message text
+  logged_at timestamp [not null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Indexes {
+    (monitor_id, logged_at) [name: 'idx_logs_monitor_time']
+    event_type [name: 'idx_logs_event_type']
+    logged_at [name: 'idx_logs_time']
+  }
+  
+  Note: 'Event logs for monitoring activities and changes'
+}
+
+// ============================================
+// NOTIFICATION CHANNELS
+// ============================================
+
+Table notification_channels {
+  id bigint [primary key, increment]
+  name varchar(255) [not null]
+  type varchar(50) [not null, note: 'email, slack, telegram, discord, webhook']
+  config json [not null, note: 'Channel-specific configuration']
+  created_by bigint [ref: > users.id, not null, note: 'ON DELETE CASCADE']
+  is_enabled boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Indexes {
+    type [name: 'idx_notification_type']
+    is_enabled [name: 'idx_notification_enabled']
+  }
+  
+  Note: '''
+    Multi-channel notification system.
+    Linked to monitors via JSON field.
+  '''
+}
+
+// ============================================
+// RELATIONSHIPS SUMMARY
+// ============================================
+
+// All relationships are defined inline within table definitions above
+// 
+// One-to-Many Relationships:
+// - users.id → monitors.created_by (SET NULL on delete)
+// - users.id → monitors.actual_created_by (SET NULL on delete)
+// - users.id → notification_channels.created_by (CASCADE on delete)
+// - users.id → incidents.acknowledged_by (SET NULL on delete)
+// - monitors.id → monitor_checks.monitor_id (CASCADE on delete)
+// - monitors.id → incidents.monitor_id (CASCADE on delete)
+// - monitors.id → monitor_metrics.monitor_id (CASCADE on delete)
+// - monitors.id → monitor_metrics_aggregated.monitor_id (CASCADE on delete)
+// - monitors.id → monitoring_logs.monitor_id (CASCADE on delete)
+//
+// Many-to-Many (via JSON field):
+// - monitors.notification_channels (JSON) ↔ notification_channels.id
+
+// ============================================
+// ENUMS & TYPES
+// ============================================
+
+Enum monitor_type {
+  http
+  https
+  tcp
+  ping
+  keyword
+  push
+}
+
+Enum monitor_status {
+  up
+  down
+  invalid
+  validating
+  unknown
+}
+
+Enum incident_status {
+  open
+  resolved
+  acknowledged
+}
+
+Enum aggregation_interval {
+  minute
+  hour
+  day
+}
+
+Enum notification_type {
+  email
+  slack
+  telegram
+  discord
+  webhook
+}
+
+Enum user_role {
+  admin
+  user
+}
+
+// ============================================
+// PRIORITY SYSTEM DOCUMENTATION
+// ============================================
+
+TableGroup "Core Monitoring" {
+  monitors
+  monitor_checks
+  incidents
+}
+
+TableGroup "Analytics & Metrics" {
+  monitor_metrics
+  monitor_metrics_aggregated
+}
+
+TableGroup "Logs & Notifications" {
+  monitoring_logs
+  notification_channels
+}
+
+TableGroup "User Management" {
+  users
+}

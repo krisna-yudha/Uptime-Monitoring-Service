@@ -217,8 +217,16 @@ class ProcessMonitorCheck implements ShouldQueue
                 );
             }
 
-            // Create monitor check record
-            try {
+            // Calculate status changes BEFORE updating database
+            $previousStatus = $this->monitor->last_status;
+            $consecutiveFailures = $status === 'down' ? 
+                ($previousStatus === 'down' ? $this->monitor->consecutive_failures + 1 : 1) : 0;
+
+            // Use database transaction to ensure ALL data is saved atomically
+            // This prevents race condition and data inconsistency
+            $check = null;
+            DB::transaction(function () use ($status, $previousStatus, $consecutiveFailures, $errorMessage, $httpStatus, $latency, $responseSize, $meta, &$check) {
+                // Create monitor check record FIRST
                 Log::info('Creating MonitorCheck record', ['monitor_id' => $this->monitor->id, 'status' => $status]);
                 $check = MonitorCheck::create([
                     'monitor_id' => $this->monitor->id,
@@ -228,63 +236,58 @@ class ProcessMonitorCheck implements ShouldQueue
                     'http_status' => $httpStatus,
                     'error_message' => $errorMessage,
                     'response_size' => $responseSize,
-                    'region' => 'local', // Can be expanded for multiple regions
+                    'region' => 'local',
                     'meta' => $meta,
                 ]);
-                Log::info('MonitorCheck record created', ['monitor_id' => $this->monitor->id, 'check_id' => $check->id ?? null]);
-            } catch (\Exception $e) {
-                Log::error('Failed to create MonitorCheck record', ['monitor_id' => $this->monitor->id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-                // Continue so monitor status updates still happen
-                $check = null;
-            }
+                Log::info('MonitorCheck record created', ['monitor_id' => $this->monitor->id, 'check_id' => $check->id]);
 
-            // Log successful check completion
-            MonitoringLog::logEvent(
-                $this->monitor->id,
-                'check_complete',
-                $status,
-                [
-                    'check_id' => $check->id,
-                    'http_status' => $httpStatus,
-                    'response_size' => $responseSize,
-                    'meta' => $meta,
-                    'execution_time_ms' => $latency
-                ],
-                $latency,
-                $errorMessage
-            );
-
-            // Update monitor status and consecutive failures
-            $previousStatus = $this->monitor->last_status;
-            $consecutiveFailures = $status === 'down' ? 
-                ($previousStatus === 'down' ? $this->monitor->consecutive_failures + 1 : 1) : 0;
-
-            $this->monitor->update([
-                'last_status' => $status,
-                'last_checked_at' => now(),
-                'next_check_at' => now()->addSeconds($this->monitor->interval_seconds),
-                'consecutive_failures' => $consecutiveFailures,
-                'error_message' => $status === 'down' ? $errorMessage : null,
-                'last_error_at' => $status === 'down' ? now() : null,
-            ]);
-
-            // Log status change if detected
-            if ($previousStatus !== $status) {
+                // Log successful check completion
                 MonitoringLog::logEvent(
                     $this->monitor->id,
-                    'status_change',
+                    'check_complete',
                     $status,
                     [
-                        'previous_status' => $previousStatus,
-                        'new_status' => $status,
-                        'consecutive_failures' => $consecutiveFailures,
-                        'check_id' => $check->id
-                    ]
+                        'check_id' => $check->id,
+                        'http_status' => $httpStatus,
+                        'response_size' => $responseSize,
+                        'meta' => $meta,
+                        'execution_time_ms' => $latency
+                    ],
+                    $latency,
+                    $errorMessage
                 );
-            }
-
-            // Handle incident management (FR-12, FR-13)
-            $this->handleIncidents($status, $previousStatus, $errorMessage, $httpStatus);
+                
+                // Handle incidents SECOND (before updating monitor status)
+                // This ensures incident exists when notification is dispatched
+                $this->handleIncidents($status, $previousStatus, $errorMessage, $httpStatus, $consecutiveFailures);
+                
+                // Update monitor status LAST
+                // Use priority-based interval instead of fixed interval_seconds
+                $checkInterval = $this->monitor->getCheckIntervalSeconds();
+                $this->monitor->update([
+                    'last_status' => $status,
+                    'last_checked_at' => now(),
+                    'next_check_at' => now()->addSeconds($checkInterval),
+                    'consecutive_failures' => $consecutiveFailures,
+                    'error_message' => $status === 'down' ? $errorMessage : null,
+                    'last_error_at' => $status === 'down' ? now() : null,
+                ]);
+                
+                // Log status change if detected
+                if ($previousStatus !== $status) {
+                    MonitoringLog::logEvent(
+                        $this->monitor->id,
+                        'status_change',
+                        $status,
+                        [
+                            'previous_status' => $previousStatus,
+                            'new_status' => $status,
+                            'consecutive_failures' => $consecutiveFailures,
+                            'check_id' => $check->id
+                        ]
+                    );
+                }
+            });
 
             // Log the check
             Log::info("Monitor check completed", [
@@ -295,10 +298,19 @@ class ProcessMonitorCheck implements ShouldQueue
                 'status_changed' => $previousStatus !== $status,
             ]);
 
+        } catch (\Exception $generalError) {
+            // Log unexpected errors
+            Log::error("Unexpected error during monitor check", [
+                'monitor_id' => $this->monitor->id,
+                'error' => $generalError->getMessage(),
+                'trace' => $generalError->getTraceAsString()
+            ]);
+        } finally {
             // Auto-requeue for next check (self-perpetuating monitoring)
-            // This ensures monitoring continues even if scheduler is not running
+            // MOVED TO FINALLY to ensure it ALWAYS runs regardless of check success/failure
+            // This is critical for monitors with non-standard ports or any check that might fail
             try {
-                $delay = $this->monitor->interval_seconds;
+                $delay = $this->monitor->interval_seconds ?? 60;
                 
                 // Refresh monitor to get latest state
                 $freshMonitor = Monitor::find($this->monitor->id);
@@ -317,16 +329,22 @@ class ProcessMonitorCheck implements ShouldQueue
                             'delay_seconds' => $delay,
                             'next_check_at' => now()->addSeconds($delay)->toDateTimeString()
                         ]);
+                    } else {
+                        Log::info("Monitor not requeued", [
+                            'monitor_id' => $freshMonitor->id,
+                            'reason' => $isPaused ? 'paused' : 'push_type',
+                            'type' => $freshMonitor->type
+                        ]);
                     }
                 }
             } catch (\Exception $e) {
-                Log::warning("Failed to auto-requeue monitor", [
+                Log::error("CRITICAL: Failed to auto-requeue monitor - monitoring will stop!", [
                     'monitor_id' => $this->monitor->id,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
             }
-
-        } finally {
+            
             // Always release the advisory lock
             if ($lockAcquired) {
                 try {
@@ -519,8 +537,11 @@ class ProcessMonitorCheck implements ShouldQueue
         return $httpResult;
     }
 
-    protected function handleIncidents(string $currentStatus, string $previousStatus, ?string $errorMessage = null, ?int $httpStatus = null): void
+    protected function handleIncidents(string $currentStatus, string $previousStatus, ?string $errorMessage = null, ?int $httpStatus = null, ?int $consecutiveFailures = null): void
     {
+        // Use passed consecutive_failures or fallback to monitor's value (for backward compatibility)
+        $failures = $consecutiveFailures ?? $this->monitor->consecutive_failures;
+        
         $lastIncident = $this->monitor->incidents()
             ->where('resolved', false)
             ->latest('started_at')
@@ -550,8 +571,8 @@ class ProcessMonitorCheck implements ShouldQueue
                 'error_type' => 'critical'
             ]);
 
-            // Send notification immediately for critical errors
-            SendNotification::dispatch($this->monitor, 'down', $incident);
+            // Send notification immediately for critical errors - after commit
+            SendNotification::dispatch($this->monitor, 'down', $incident)->afterCommit();
             return;
         }
 
@@ -580,11 +601,11 @@ class ProcessMonitorCheck implements ShouldQueue
                     'reason' => 'No open incident exists while service is down'
                 ]);
 
-                // Send notification if threshold met
+                // Send notification if threshold met - after commit
                 $notifyThreshold = isset($this->monitor->notify_after_retries) ? (int) $this->monitor->notify_after_retries : 3;
                 $effectiveThreshold = max(3, $notifyThreshold);
-                if ($this->monitor->consecutive_failures >= $effectiveThreshold) {
-                    SendNotification::dispatch($this->monitor, 'down', $incident);
+                if ($failures >= $effectiveThreshold) {
+                    SendNotification::dispatch($this->monitor, 'down', $incident)->afterCommit();
                 }
             }
             return;
@@ -593,7 +614,7 @@ class ProcessMonitorCheck implements ShouldQueue
         // Create incident only after 3 consecutive failures confirmed
         if ($currentStatus === 'down' && !$lastIncident) {
             // Only create incident after 3 consecutive failures (3 checks failed)
-            if ($this->monitor->consecutive_failures >= 3) {
+            if ($failures >= 3) {
                 $incidentDescription = $errorMessage 
                     ? "Monitor confirmed down after 3 consecutive failures: {$errorMessage}" 
                     : "Monitor confirmed down after 3 consecutive failures (from status: {$previousStatus})";
@@ -612,28 +633,28 @@ class ProcessMonitorCheck implements ShouldQueue
                     'incident_id' => $incident->id,
                     'previous_status' => $previousStatus,
                     'current_status' => $currentStatus,
-                    'consecutive_failures' => $this->monitor->consecutive_failures,
+                    'consecutive_failures' => $failures,
                 ]);
 
-                // Send notification immediately when incident is created (at 3 failures)
-                SendNotification::dispatch($this->monitor, 'down', $incident);
+                // Send notification immediately when incident is created (at 3 failures) - after commit
+                SendNotification::dispatch($this->monitor, 'down', $incident)->afterCommit();
                 
                 // Log that notification was triggered
                 Log::info("Notification dispatched after 3 consecutive failures", [
                     'monitor_id' => $this->monitor->id,
                     'incident_id' => $incident->id,
-                    'consecutive_failures' => $this->monitor->consecutive_failures,
+                    'consecutive_failures' => $failures,
                 ]);
 
                 // Critical Alert: Send special notification when service is down 20 times consecutively
                 // Only send if we haven't already sent a critical alert for this outage
-                if ($this->monitor->consecutive_failures == 20 && !$this->hasCriticalAlertBeenSent()) {
+                if ($failures == 20 && !$this->hasCriticalAlertBeenSent()) {
                     $this->sendCriticalDownAlert($incident);
                     
                     // Set incident status based on alert handling
                     if ($incident && !$incident->hasCriticalAlertBeenSent()) {
                         $incident->updateAlertStatus('critical_sent', [
-                            'consecutive_failures' => $this->monitor->consecutive_failures,
+                            'consecutive_failures' => $failures,
                             'estimated_downtime_minutes' => $this->calculateDowntimeDuration()
                         ]);
                         
@@ -648,7 +669,7 @@ class ProcessMonitorCheck implements ShouldQueue
                 // Log that we're still in failure state but not yet at threshold
                 Log::info("Monitor down but not creating incident yet", [
                     'monitor_id' => $this->monitor->id,
-                    'consecutive_failures' => $this->monitor->consecutive_failures,
+                    'consecutive_failures' => $failures,
                     'threshold' => 3,
                     'message' => 'Waiting for 3 consecutive failures before creating incident'
                 ]);
@@ -683,8 +704,8 @@ class ProcessMonitorCheck implements ShouldQueue
                 'final_incident_status' => $lastIncident->status,
             ]);
 
-            // Send recovery notification (FR-14)
-            SendNotification::dispatch($this->monitor, 'up', $lastIncident);
+            // Send recovery notification (FR-14) - after commit
+            SendNotification::dispatch($this->monitor, 'up', $lastIncident)->afterCommit();
         }
     }
 
@@ -1030,6 +1051,7 @@ class ProcessMonitorCheck implements ShouldQueue
     private function handleInvalidService(array $validationResult): void
     {
         // Update monitor status to invalid
+        $checkInterval = $this->monitor->getCheckIntervalSeconds();
         $this->monitor->update([
             'last_status' => 'invalid',
             'last_checked_at' => now(),
@@ -1037,7 +1059,7 @@ class ProcessMonitorCheck implements ShouldQueue
             'error_message' => $validationResult['reason'],
             'last_error_at' => now(),
             // Schedule next check so monitoring will retry automatically
-            'next_check_at' => now()->addSeconds($this->monitor->interval_seconds ?? 60),
+            'next_check_at' => now()->addSeconds($checkInterval),
         ]);
         
         // Create a monitor check record
@@ -1081,14 +1103,14 @@ class ProcessMonitorCheck implements ShouldQueue
                 'meta' => json_encode($validationResult)
             ]);
             
-            // Send notification about invalid service
+            // Send notification about invalid service - after commit
             if ($this->monitor->notification_enabled) {
                 SendNotification::dispatch(
                     $this->monitor,
                     'validation_failed',
                     "Service validation failed for {$this->monitor->name}: {$validationResult['reason']}",
                     $incident
-                );
+                )->afterCommit();
             }
         }
     }
@@ -1127,7 +1149,7 @@ class ProcessMonitorCheck implements ShouldQueue
             );
 
             // Send critical notification to all notification channels
-            // Use high priority and special message format
+            // Use high priority and special message format - after commit
             $criticalMessage = $this->buildCriticalAlertMessage();
             
             SendNotification::dispatch(
@@ -1140,7 +1162,7 @@ class ProcessMonitorCheck implements ShouldQueue
                     'alert_type' => 'service_outage_20_failures',
                     'requires_immediate_action' => true
                 ]
-            );
+            )->afterCommit();
 
             // Update monitor with critical alert flag to prevent spam
             $this->monitor->update([

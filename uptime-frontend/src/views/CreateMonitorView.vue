@@ -226,17 +226,20 @@
           
           <div class="form-row">
             <div class="form-group">
-              <label for="interval" class="form-label">Check Interval (seconds) *</label>
-              <input
-                id="interval"
-                v-model.number="form.interval_seconds"
-                type="number"
+              <label for="priority" class="form-label">Priority Level *</label>
+              <select
+                id="priority"
+                v-model.number="form.priority"
                 class="form-control"
-                min="1"
-                max="3600"
                 required
               >
-              <small class="form-help">Minimum 1 second for realtime monitoring</small>
+                <option value="1">Critical (1 second)</option>
+                <option value="2">High (1 minute)</option>
+                <option value="3">Medium (5 minutes)</option>
+                <option value="4">Low (30 minutes)</option>
+                <option value="5">Very Low (1 hour)</option>
+              </select>
+              <small class="form-help">Higher priority = more frequent checks</small>
             </div>
             
             <div class="form-group">
@@ -494,6 +497,7 @@ const form = reactive({
   port: null,
   group_name: '',
   group_description: '',
+  priority: 1,
   interval_seconds: 1,
   timeout_ms: 5000,
   retries: 3,

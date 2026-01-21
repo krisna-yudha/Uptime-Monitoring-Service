@@ -206,24 +206,20 @@
         <h2>Monitoring Configuration</h2>
         
         <div class="form-group">
-          <label for="interval">Check Interval (seconds) *</label>
+          <label for="priority">Priority Level *</label>
           <select
-            id="interval"
-            v-model.number="form.interval_seconds"
+            id="priority"
+            v-model.number="form.priority"
             required
             class="form-control"
           >
-            <option :value="1">1 second (Realtime)</option>
-            <option :value="5">5 seconds</option>
-            <option :value="10">10 seconds</option>
-            <option :value="30">30 seconds</option>
-            <option :value="60">1 minute</option>
-            <option :value="300">5 minutes</option>
-            <option :value="600">10 minutes</option>
-            <option :value="1800">30 minutes</option>
-            <option :value="3600">1 hour</option>
+            <option :value="1">Critical (1 second)</option>
+            <option :value="2">High (1 minute)</option>
+            <option :value="3">Medium (5 minutes)</option>
+            <option :value="4">Low (30 minutes)</option>
+            <option :value="5">Very Low (1 hour)</option>
           </select>
-          <small class="form-help">Minimum interval is 1 second for realtime monitoring</small>
+          <small class="form-help">Higher priority = more frequent checks</small>
         </div>
 
         <div class="form-group">
@@ -353,6 +349,7 @@ const form = ref({
   name: '',
   type: 'http',
   target: '',
+  priority: 1,
   interval_seconds: 1,
   timeout_seconds: 30,
   retry_count: 3,

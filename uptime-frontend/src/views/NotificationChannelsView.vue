@@ -324,6 +324,21 @@
     </div>
     </div>
 
+  <!-- Custom Notification Popup -->
+  <Transition name="notification-slide">
+    <div v-if="showNotification" class="notification-popup" :class="`notification-${notificationType}`">
+      <div class="notification-content">
+        <div class="notification-icon">
+          <span v-if="notificationType === 'success'">✓</span>
+          <span v-if="notificationType === 'error'">✕</span>
+          <span v-if="notificationType === 'info'">ℹ</span>
+        </div>
+        <div class="notification-message">{{ notificationMessage }}</div>
+        <button @click="showNotification = false" class="notification-close">×</button>
+      </div>
+    </div>
+  </Transition>
+
   <!-- Mobile Action Sheet -->
   <div v-if="actionChannel" class="action-sheet-backdrop" @click.self="closeActionSheet">
     <div class="action-sheet">
@@ -355,6 +370,11 @@ const editingChannel = ref(null)
 const submitting = ref(false)
 const testing = ref(false)
 const actionChannel = ref(null)
+
+// Custom notification popup
+const showNotification = ref(false)
+const notificationMessage = ref('')
+const notificationType = ref('success') // 'success', 'error', 'info'
 
 const form = ref({
   name: '',
@@ -509,7 +529,7 @@ async function submitForm() {
         try {
           config.headers = JSON.parse(form.value.webhook_headers)
         } catch (e) {
-          alert('Invalid JSON format in webhook headers')
+          showNotif('Invalid JSON format in webhook headers', 'error')
           submitting.value = false
           return
         }
@@ -519,7 +539,7 @@ async function submitForm() {
         try {
           config.payload = JSON.parse(form.value.webhook_payload)
         } catch (e) {
-          alert('Invalid JSON format in webhook payload')
+          showNotif('Invalid JSON format in webhook payload', 'error')
           submitting.value = false
           return
         }
@@ -543,9 +563,9 @@ async function submitForm() {
     if (response.data.success) {
       await fetchChannels()
       cancelForm()
-      alert(editingChannel.value ? 'Channel berhasil diupdate!' : 'Channel berhasil dibuat!')
+      showNotif(editingChannel.value ? 'Channel berhasil diupdate!' : 'Channel berhasil dibuat!', 'success')
     } else {
-      alert(response.data.message || 'Gagal menyimpan channel')
+      showNotif(response.data.message || 'Gagal menyimpan channel', 'error')
     }
   } catch (err) {
     console.error('Failed to save channel:', err)
@@ -563,10 +583,20 @@ async function submitForm() {
       errorMessage = err.message
     }
     
-    alert(`Error: ${errorMessage}`)
+    showNotif(`Error: ${errorMessage}`, 'error')
   } finally {
     submitting.value = false
   }
+}
+
+function showNotif(message, type = 'success') {
+  notificationMessage.value = message
+  notificationType.value = type
+  showNotification.value = true
+  
+  setTimeout(() => {
+    showNotification.value = false
+  }, 4000)
 }
 
 async function deleteChannel(channelId) {
@@ -579,12 +609,13 @@ async function deleteChannel(channelId) {
     
     if (response.data.success) {
       await fetchChannels()
+      showNotif('Channel berhasil dihapus!', 'success')
     } else {
-      alert(response.data.message || 'Failed to delete channel')
+      showNotif(response.data.message || 'Failed to delete channel', 'error')
     }
   } catch (err) {
     console.error('Failed to delete channel:', err)
-    alert('An error occurred while deleting the channel')
+    showNotif('An error occurred while deleting the channel', 'error')
   }
 }
 
@@ -595,9 +626,9 @@ async function testChannel() {
     const response = await api.notificationChannels.test(editingChannel.value.id)
     
     if (response.data.success) {
-      alert('Notifikasi test berhasil dikirim! Periksa Discord channel Anda.')
+      showNotif('Notifikasi test berhasil dikirim! Periksa Discord channel Anda.', 'success')
     } else {
-      alert(response.data.message || 'Gagal mengirim notifikasi test')
+      showNotif(response.data.message || 'Gagal mengirim notifikasi test', 'error')
     }
   } catch (err) {
     console.error('Failed to test channel:', err)
@@ -611,7 +642,7 @@ async function testChannel() {
       errorMessage = err.message
     }
     
-    alert(`Error: ${errorMessage}`)
+    showNotif(`Error: ${errorMessage}`, 'error')
   } finally {
     testing.value = false
   }
@@ -622,9 +653,9 @@ async function testChannelById(channelId) {
     const response = await api.notificationChannels.test(channelId)
     
     if (response.data.success) {
-      alert('Notifikasi test berhasil dikirim! Periksa Discord channel Anda.')
+      showNotif('Notifikasi test berhasil dikirim! Periksa Discord channel Anda.', 'success')
     } else {
-      alert(response.data.message || 'Gagal mengirim notifikasi test')
+      showNotif(response.data.message || 'Gagal mengirim notifikasi test', 'error')
     }
   } catch (err) {
     console.error('Failed to test channel:', err)
@@ -638,7 +669,7 @@ async function testChannelById(channelId) {
       errorMessage = err.message
     }
     
-    alert(`Error: ${errorMessage}`)
+    showNotif(`Error: ${errorMessage}`, 'error')
   }
 }
 
@@ -648,12 +679,13 @@ async function toggleChannel(channelId) {
     
     if (response.data.success) {
       await fetchChannels()
+      showNotif('Status channel berhasil diubah!', 'success')
     } else {
-      alert(response.data.message || 'Gagal mengubah status channel')
+      showNotif(response.data.message || 'Gagal mengubah status channel', 'error')
     }
   } catch (err) {
     console.error('Failed to toggle channel:', err)
-    alert('Terjadi kesalahan saat mengubah status channel')
+    showNotif('Terjadi kesalahan saat mengubah status channel', 'error')
   }
 }
 
@@ -714,6 +746,136 @@ async function actionToggle() {
 }
 
 /* Mobile action-sheet and responsive tweaks */
+/* Custom Notification Popup */
+.notification-popup {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  min-width: 320px;
+  max-width: 500px;
+  z-index: 9999;
+  animation: slideInRight 0.3s ease-out;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  background: white;
+  border-left: 4px solid;
+}
+
+.notification-success .notification-content {
+  border-left-color: #10b981;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+}
+
+.notification-error .notification-content {
+  border-left-color: #ef4444;
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+}
+
+.notification-info .notification-content {
+  border-left-color: #3b82f6;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+}
+
+.notification-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.notification-success .notification-icon {
+  background: #10b981;
+  color: white;
+}
+
+.notification-error .notification-icon {
+  background: #ef4444;
+  color: white;
+}
+
+.notification-info .notification-icon {
+  background: #3b82f6;
+  color: white;
+}
+
+.notification-message {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+.notification-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.notification-close:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #1f2937;
+}
+
+/* Notification Animation */
+.notification-slide-enter-active,
+.notification-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.notification-slide-enter-from {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+.notification-slide-leave-to {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .notification-popup {
+    top: 16px;
+    right: 16px;
+    left: 16px;
+    min-width: auto;
+  }
+}
+
 .action-sheet-backdrop {
   position: fixed;
   inset: 0;

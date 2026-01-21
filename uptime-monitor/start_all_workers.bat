@@ -1,4 +1,4 @@
-@echo off
+./@echo off
 title Uptime Monitor - All Workers
 color 0B
 
