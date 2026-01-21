@@ -9,7 +9,7 @@ const host = window.location.hostname
 // 4) If env is empty, fallback to localhost
 const baseURL =
   host.startsWith('100.') || host.startsWith('192.168.') || host.startsWith('10.')
-    ? `http://${host}:8000/api`
+    ? `http://${host}:80/api`
     : (import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000/api')
 
 // Create axios instance
