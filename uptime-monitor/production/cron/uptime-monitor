@@ -1,0 +1,7 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=""
+
+# Laravel Task Scheduler - Runs every minute
+# This handles metrics aggregation, cleanup, and other scheduled tasks
+* * * * * www-data cd /var/www/uptime-monitor && php artisan schedule:run >> /dev/null 2>&1

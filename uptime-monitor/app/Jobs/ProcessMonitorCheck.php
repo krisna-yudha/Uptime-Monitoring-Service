@@ -107,7 +107,8 @@ class ProcessMonitorCheck implements ShouldQueue
         try {
             try {
                 // Try to acquire advisory lock (Postgres)
-                $lockResult = DB::select("SELECT pg_try_advisory_lock(?) as lock_acquired", [$lockKey]);
+                // Use raw value instead of parameter binding for PostgreSQL functions
+                $lockResult = DB::select("SELECT pg_try_advisory_lock({$lockKey}) as lock_acquired");
                 $lockAcquired = $lockResult[0]->lock_acquired ?? false;
             } catch (\Exception $e) {
                 // If DB does not support pg_try_advisory_lock (e.g., MySQL),
@@ -349,7 +350,8 @@ class ProcessMonitorCheck implements ShouldQueue
             if ($lockAcquired) {
                 try {
                     // Try to release Postgres advisory lock if supported
-                    DB::select("SELECT pg_advisory_unlock(?)", [$lockKey]);
+                    // Use raw value instead of parameter binding for PostgreSQL functions
+                    DB::select("SELECT pg_advisory_unlock({$lockKey})");
                 } catch (\Exception $e) {
                     // If DB does not support advisory unlock, just ignore
                     Log::debug('Advisory unlock not supported or failed: ' . $e->getMessage(), [

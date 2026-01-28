@@ -2,17 +2,25 @@ import axios from 'axios'
 
 const host = window.location.hostname
 
-// Auto-detect backend URL based on access method:
-// 1) If user accesses via Tailscale (100.x.x.x) → use that host
-// 2) If user accesses via LAN (192.168.x.x / 10.x.x.x) → use that host
-// 3) Otherwise, use env variable
-// 4) If env is empty, fallback to localhost
-const baseURL =
-  host.startsWith('100.') || host.startsWith('192.168.') || host.startsWith('10.')
-    ? `http://${host}:80/api`
+const isPrivateIP =
+  host.startsWith('100.') ||
+  host.startsWith('192.168.') ||
+  host.startsWith('10.')
+
+const isProdDomain =
+  host.endsWith('.gentz.me') || host === 'gentz.me'
+
+// Logic OR:
+// 👉 Private IP → direct VM HTTP
+// 👉 Production domain → HTTPS API domain
+// 👉 Else → env / localhost
+
+const baseURL = isPrivateIP
+  ? `http://${host}:80/api`
+  : isProdDomain
+    ? 'https://api.gentz.me/api'
     : (import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000/api')
 
-// Create axios instance
 const api = axios.create({
   baseURL,
   headers: {
