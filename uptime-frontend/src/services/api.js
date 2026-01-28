@@ -93,7 +93,8 @@ export default {
     update: (id, data) => api.put(`/notification-channels/${id}`, data),
     delete: (id) => api.delete(`/notification-channels/${id}`),
     test: (id) => api.post(`/notification-channels/${id}/test`),
-    toggle: (id) => api.post(`/notification-channels/${id}/toggle`)
+    toggle: (id) => api.post(`/notification-channels/${id}/toggle`),
+    connect: (id) => api.post(`/notification-channels/${id}/connect`)
   },
 
   // Monitor checks

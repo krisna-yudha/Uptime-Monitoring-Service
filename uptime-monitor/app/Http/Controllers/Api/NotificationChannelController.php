@@ -376,4 +376,126 @@ class NotificationChannelController extends Controller
             throw new \Exception("Webhook error: " . $response->body());
         }
     }
+
+    /**
+     * Connect/Setup Telegram bot webhook and test connection
+     */
+    public function connectTelegram(NotificationChannel $notificationChannel): JsonResponse
+    {
+        if ($notificationChannel->type !== 'telegram') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This action is only for Telegram channels'
+            ], 400);
+        }
+
+        try {
+            $config = $notificationChannel->config;
+            $botToken = $config['bot_token'] ?? '';
+            $chatId = $config['chat_id'] ?? '';
+
+            if (empty($botToken)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bot token not configured'
+                ], 400);
+            }
+
+            // Get bot info to verify token
+            $botInfoResponse = Http::withOptions(['verify' => false])
+                ->timeout(10)
+                ->get("https://api.telegram.org/bot{$botToken}/getMe");
+
+            if (!$botInfoResponse->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid bot token'
+                ], 400);
+            }
+
+            $botInfo = $botInfoResponse->json();
+            $botUsername = $botInfo['result']['username'] ?? 'Unknown';
+
+            // Setup webhook
+            $webhookUrl = config('app.url') . '/api/telegram/webhook';
+            
+            $webhookResponse = Http::withOptions(['verify' => false])
+                ->timeout(30)
+                ->post("https://api.telegram.org/bot{$botToken}/setWebhook", [
+                    'url' => $webhookUrl,
+                    'allowed_updates' => ['message', 'callback_query'],
+                    'drop_pending_updates' => false
+                ]);
+
+            if (!$webhookResponse->successful()) {
+                $error = $webhookResponse->json();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to set webhook: ' . ($error['description'] ?? 'Unknown error')
+                ], 500);
+            }
+
+            // Get webhook info to verify
+            $webhookInfoResponse = Http::withOptions(['verify' => false])
+                ->timeout(10)
+                ->get("https://api.telegram.org/bot{$botToken}/getWebhookInfo");
+
+            $webhookInfo = $webhookInfoResponse->json()['result'] ?? [];
+
+            // Send confirmation message if chat_id is set
+            if (!empty($chatId)) {
+                try {
+                    $message = "✅ *Bot Connected Successfully!*\n\n";
+                    $message .= "🤖 Bot: @{$botUsername}\n";
+                    $message .= "📍 Webhook: Configured\n";
+                    $message .= "🔗 URL: {$webhookUrl}\n\n";
+                    $message .= "📱 *Available Commands:*\n";
+                    $message .= "/start - Welcome message\n";
+                    $message .= "/status - Monitor status\n";
+                    $message .= "/incidents - Recent incidents\n";
+                    $message .= "/monitors - List all monitors\n";
+                    $message .= "/uptime - Uptime statistics\n";
+                    $message .= "/ping - Health check\n";
+                    $message .= "/help - All commands\n\n";
+                    $message .= "🎉 *Commands are ready to use!*";
+
+                    Http::withOptions(['verify' => false])
+                        ->timeout(10)
+                        ->post("https://api.telegram.org/bot{$botToken}/sendMessage", [
+                            'chat_id' => $chatId,
+                            'text' => $message,
+                            'parse_mode' => 'Markdown'
+                        ]);
+                } catch (\Exception $e) {
+                    // Ignore if message send fails
+                    Log::debug('Failed to send connection confirmation', ['error' => $e->getMessage()]);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Bot connected successfully! Commands are ready to use.',
+                'data' => [
+                    'bot_username' => $botUsername,
+                    'webhook_url' => $webhookInfo['url'] ?? $webhookUrl,
+                    'webhook_set' => !empty($webhookInfo['url']),
+                    'pending_updates' => $webhookInfo['pending_update_count'] ?? 0,
+                    'commands_ready' => true,
+                    'last_error' => $webhookInfo['last_error_message'] ?? null
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Telegram connection failed', [
+                'channel_id' => $notificationChannel->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Connection failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

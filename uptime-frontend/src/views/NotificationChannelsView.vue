@@ -268,7 +268,18 @@
           <div class="channel-type-badge" :class="`type-${channel.type}`">
             {{ channel.type.toUpperCase() }}
           </div>
-          <div class="status-indicator" :class="channel.is_enabled ? 'status-enabled' : 'status-disabled'"></div>
+          <div class="channel-header-right">
+            <button
+              v-if="channel.type === 'telegram'"
+              @click.stop="connectTelegram(channel.id)"
+              :disabled="!channel.is_enabled"
+              class="btn btn-connect btn-xs"
+              title="Connect and setup webhook for bot commands"
+            >
+              Connect
+            </button>
+            <div class="status-indicator" :class="channel.is_enabled ? 'status-enabled' : 'status-disabled'"></div>
+          </div>
         </div>
         
         <h3 class="channel-name">
@@ -344,6 +355,14 @@
     <div class="action-sheet">
       <h3 class="action-sheet-title">{{ actionChannel.name }}</h3>
       <div class="action-sheet-actions">
+        <button 
+          v-if="actionChannel.type === 'telegram'"
+          @click="actionConnect" 
+          :disabled="!actionChannel.is_enabled" 
+          class="btn btn-connect btn-block"
+        >
+          Connect
+        </button>
         <button @click="actionToggle" :class="actionChannel.is_enabled ? 'btn btn-warning btn-block' : 'btn btn-success btn-block'">
           {{ actionChannel.is_enabled ? 'Disable' : 'Enable' }}
         </button>
@@ -589,10 +608,18 @@ async function submitForm() {
   }
 }
 
-function showNotif(message, type = 'success') {
+function showNotif(message, type = 'success', isCenter = false) {
   notificationMessage.value = message
   notificationType.value = type
   showNotification.value = true
+  
+  // Add center class if needed
+  setTimeout(() => {
+    const popup = document.querySelector('.notification-popup')
+    if (popup && isCenter) {
+      popup.classList.add('notification-center')
+    }
+  }, 10)
   
   setTimeout(() => {
     showNotification.value = false
@@ -733,6 +760,153 @@ function actionDelete() {
   closeActionSheet()
 }
 
+function actionConnect() {
+  if (!actionChannel.value) return
+  connectTelegram(actionChannel.value.id)
+  closeActionSheet()
+}
+
+async function connectTelegram(channelId) {
+  try {
+    showNotif('Connecting Telegram bot...', 'info')
+    
+    const response = await api.notificationChannels.connect(channelId)
+    
+    if (response.data.success) {
+      const data = response.data.data
+      
+      // Show success notification with key info
+      const successMsg = `✅ Bot Connected Successfully!\n\nBot: @${data.bot_username || 'N/A'}\nWebhook: ${data.webhook_set ? 'Configured ✅' : 'Not set ❌'}\nCommands Ready: ${data.commands_ready ? 'Yes ✅' : 'No ❌'}`
+      
+      showNotif(successMsg, 'success', true)
+      
+      // Show detailed modal with structured information
+      showDetailedInfo(data)
+      
+      await fetchChannels()
+    } else {
+      showNotif(response.data.message || 'Failed to connect bot', 'error', true)
+    }
+  } catch (err) {
+    console.error('Failed to connect Telegram bot:', err)
+    
+    let errorMessage = 'Failed to connect Telegram bot'
+    
+    if (err.response?.data?.message) {
+      errorMessage = err.response.data.message
+    } else if (err.message) {
+      errorMessage = err.message
+    }
+    
+    showNotif(`❌ ${errorMessage}`, 'error', true)
+  }
+}
+
+function closeModal(modal) {
+  modal.classList.remove('show')
+  modal.classList.add('hide')
+  setTimeout(() => {
+    modal.remove()
+  }, 400) // Wait for animation to complete
+}
+
+function showDetailedInfo(data) {
+  const modal = document.createElement('div')
+  modal.className = 'telegram-info-modal'
+  modal.innerHTML = `
+    <div class="telegram-info-overlay">
+      <div class="telegram-info-content" onclick="event.stopPropagation()">
+        <button class="telegram-info-close">×</button>
+        
+        <div class="telegram-info-header">
+          <div class="telegram-info-icon">✅</div>
+          <h2>Telegram Bot Connected!</h2>
+        </div>
+        
+        <div class="telegram-info-body">
+          <div class="telegram-info-section">
+            <h3>📡 Connection Details</h3>
+            <div class="telegram-info-grid">
+              <div class="telegram-info-item">
+                <span class="label">Bot Username:</span>
+                <span class="value">@${data.bot_username || 'N/A'}</span>
+              </div>
+              <div class="telegram-info-item">
+                <span class="label">Webhook Status:</span>
+                <span class="value ${data.webhook_set ? 'success' : 'error'}">${data.webhook_set ? 'Configured ✅' : 'Not Set ❌'}</span>
+              </div>
+              <div class="telegram-info-item">
+                <span class="label">Commands Ready:</span>
+                <span class="value ${data.commands_ready ? 'success' : 'error'}">${data.commands_ready ? 'Yes ✅' : 'No ❌'}</span>
+              </div>
+              <div class="telegram-info-item">
+                <span class="label">Pending Updates:</span>
+                <span class="value">${data.pending_updates || 0}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="telegram-info-section">
+            <h3>🤖 Available Commands</h3>
+            <div class="telegram-commands-list">
+              <div class="telegram-command">
+                <code>/start</code>
+                <span>Welcome message</span>
+              </div>
+              <div class="telegram-command">
+                <code>/status</code>
+                <span>Check monitor status</span>
+              </div>
+              <div class="telegram-command">
+                <code>/monitors</code>
+                <span>List all monitors</span>
+              </div>
+              <div class="telegram-command">
+                <code>/incidents</code>
+                <span>View recent incidents</span>
+              </div>
+              <div class="telegram-command">
+                <code>/uptime</code>
+                <span>Uptime statistics</span>
+              </div>
+              <div class="telegram-command">
+                <code>/ping</code>
+                <span>Health check</span>
+              </div>
+              <div class="telegram-command">
+                <code>/help</code>
+                <span>Show all commands</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="telegram-info-footer">
+            <button class="telegram-info-btn">Got it!</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+  document.body.appendChild(modal)
+  
+  // Setup event listeners
+  const overlay = modal.querySelector('.telegram-info-overlay')
+  const closeBtn = modal.querySelector('.telegram-info-close')
+  const gotItBtn = modal.querySelector('.telegram-info-btn')
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      closeModal(modal)
+    }
+  })
+  
+  closeBtn.addEventListener('click', () => closeModal(modal))
+  gotItBtn.addEventListener('click', () => closeModal(modal))
+  
+  // Add animation
+  setTimeout(() => modal.classList.add('show'), 10)
+}
+
 async function actionToggle() {
   if (!actionChannel.value) return
   await toggleChannel(actionChannel.value.id)
@@ -755,6 +929,14 @@ async function actionToggle() {
   max-width: 500px;
   z-index: 9999;
   animation: slideInRight 0.3s ease-out;
+}
+
+/* Center variant for connect notifications */
+.notification-popup.notification-center {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  animation: slideInDown 0.3s ease-out;
 }
 
 .notification-content {
@@ -856,6 +1038,17 @@ async function actionToggle() {
   transform: translateX(100%);
 }
 
+/* Center variant transitions */
+.notification-center.notification-slide-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-100%);
+}
+
+.notification-center.notification-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-100%);
+}
+
 @keyframes slideInRight {
   from {
     opacity: 0;
@@ -867,12 +1060,327 @@ async function actionToggle() {
   }
 }
 
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 @media (max-width: 640px) {
   .notification-popup {
     top: 16px;
     right: 16px;
-    left: 16px;
+    left: auto;
     min-width: auto;
+    max-width: calc(100% - 32px);
+  }
+  
+  .notification-popup.notification-center {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: calc(100% - 32px);
+    max-width: calc(100% - 32px);
+  }
+}
+
+/* Telegram Info Modal */
+.telegram-info-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.telegram-info-modal.show {
+  opacity: 1;
+}
+
+.telegram-info-modal.hide {
+  opacity: 0;
+}
+
+.telegram-info-modal.hide .telegram-info-content {
+  animation: modalSlideOut 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.telegram-info-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.telegram-info-content {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  animation: modalSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modalSlideOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(20px);
+  }
+}
+
+.telegram-info-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  z-index: 1;
+}
+
+.telegram-info-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #1f2937;
+  transform: rotate(90deg);
+}
+
+.telegram-info-header {
+  padding: 32px 32px 24px;
+  text-align: center;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.telegram-info-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    box-shadow: 0 8px 32px rgba(16, 185, 129, 0.5);
+  }
+}
+
+.telegram-info-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.telegram-info-body {
+  padding: 24px 32px 32px;
+}
+
+.telegram-info-section {
+  margin-bottom: 24px;
+}
+
+.telegram-info-section:last-child {
+  margin-bottom: 0;
+}
+
+.telegram-info-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.telegram-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.telegram-info-item {
+  background: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.telegram-info-item .label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.telegram-info-item .value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.telegram-info-item .value.success {
+  color: #10b981;
+}
+
+.telegram-info-item .value.error {
+  color: #ef4444;
+}
+
+.telegram-commands-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.telegram-command {
+  background: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s;
+}
+
+.telegram-command:hover {
+  border-color: rgba(102, 126, 234, 0.3);
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  transform: translateX(4px);
+}
+
+.telegram-command code {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  min-width: 100px;
+  text-align: center;
+}
+
+.telegram-command span {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.telegram-info-footer {
+  padding: 0 32px 32px;
+  display: flex;
+  justify-content: center;
+}
+
+.telegram-info-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 32px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.telegram-info-btn:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #64398a 100%);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+  transform: translateY(-2px);
+}
+
+.telegram-info-btn:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 640px) {
+  .telegram-info-content {
+    border-radius: 12px;
+    max-height: 85vh;
+  }
+  
+  .telegram-info-header {
+    padding: 24px 20px 16px;
+  }
+  
+  .telegram-info-icon {
+    width: 56px;
+    height: 56px;
+    font-size: 28px;
+  }
+  
+  .telegram-info-header h2 {
+    font-size: 1.25rem;
+  }
+  
+  .telegram-info-body {
+    padding: 16px 20px 24px;
+  }
+  
+  .telegram-info-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .telegram-command code {
+    min-width: 90px;
+    font-size: 0.8rem;
+  }
+  
+  .telegram-info-footer {
+    padding: 0 20px 24px;
   }
 }
 
@@ -1181,10 +1689,17 @@ textarea.form-control {
 
 .channel-header {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.channel-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .channel-type-badge {
@@ -1427,9 +1942,62 @@ textarea.form-control {
   min-height: 34px;
 }
 
+.btn-xs {
+  padding: 6px 12px;
+  font-size: 0.75em;
+  min-height: 30px;
+  white-space: nowrap;
+  border-radius: 6px;
+  letter-spacing: 0.3px;
+}
+
 .btn-lg {
   padding: 12px 24px;
   font-size: 1.1em;
+}
+
+.btn-connect {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  font-weight: 600;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-connect::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.btn-connect:hover:not(:disabled)::before {
+  left: 100%;
+}
+
+.btn-connect:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5568d3 0%, #64398a 100%);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.btn-connect:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 4px rgba(102, 126, 234, 0.3);
+}
+
+.btn-connect:disabled {
+  background: linear-gradient(135deg, #d1d5db 0%, #9ca3af 100%);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .checkbox-label {
