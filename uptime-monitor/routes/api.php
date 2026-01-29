@@ -91,6 +91,7 @@ Route::middleware('auth:api')->group(function () {
     Route::post('notification-channels/{notificationChannel}/connect', [NotificationChannelController::class, 'connectTelegram']);
 
     // Monitor checks routes
+    Route::get('monitors/{monitor}/checks', [MonitorCheckController::class, 'index']);
     Route::apiResource('monitor-checks', MonitorCheckController::class)->only(['index', 'show']);
 
     // Incidents routes
