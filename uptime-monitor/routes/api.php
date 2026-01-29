@@ -84,7 +84,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('check', [MonitorController::class, 'triggerCheck']);
     });
 
-    // Notification channels routes
+    // Notification channels routess
     Route::apiResource('notification-channels', NotificationChannelController::class);
     Route::post('notification-channels/{notificationChannel}/test', [NotificationChannelController::class, 'test']);
     Route::post('notification-channels/{notificationChannel}/toggle', [NotificationChannelController::class, 'toggle']);
