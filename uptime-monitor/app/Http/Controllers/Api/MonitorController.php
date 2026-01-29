@@ -624,7 +624,8 @@ class MonitorController extends Controller
 
         try {
             // Dispatch job to queue for immediate processing
-            \App\Jobs\ProcessMonitorCheck::dispatch($monitor)->onQueue('high-priority');
+            // Use monitor-checks-priority queue to match supervisor config
+            \App\Jobs\ProcessMonitorCheck::dispatch($monitor)->onQueue('monitor-checks-priority');
 
             return response()->json([
                 'success' => true,
