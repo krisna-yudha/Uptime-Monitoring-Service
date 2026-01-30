@@ -8,9 +8,10 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Schedule monitor checks to run every minute, but monitors will check based on their individual interval_seconds
-// For 10-second intervals, individual monitors will handle the timing
-Schedule::command('monitor:check')->everySecond();
+// Schedule monitor checks to run every 10 seconds
+// This will dispatch temporary jobs that auto-delete after completion
+// No more auto-requeue - scheduler will create new jobs each time
+Schedule::command('monitor:check')->everyTenSeconds();
 
 // Schedule data aggregation - runs every minute to aggregate the previous minute's data
 Schedule::command('metrics:aggregate --interval=minute')->everyMinute();

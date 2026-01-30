@@ -11,53 +11,32 @@ class MonitorObserver
 {
     /**
      * Handle the Monitor "created" event.
+     * Immediately dispatch first check job for new monitor.
      */
     public function created(Monitor $monitor): void
     {
-        // Execute initial monitor check after monitor creation
-        // Strategy: Use synchronous check if queue is overloaded, otherwise dispatch
+        // Set next_check_at using saveQuietly to prevent triggering Observer again
+        $monitor->next_check_at = now();
+        $monitor->saveQuietly();
         
         try {
-            $totalJobs = DB::table('jobs')->count();
+            // Dispatch first check immediately to priority queue
+            // This ensures new monitor gets checked right away
+            ProcessMonitorCheck::dispatch($monitor)
+                ->onQueue('monitor-checks-priority');
             
-            // If queue is overloaded (>15000 jobs), run synchronously for immediate feedback
-            if ($totalJobs > 15000) {
-                Log::warning('[Observer] Queue overloaded - running synchronous initial check', [
-                    'monitor_id' => $monitor->id,
-                    'total_jobs' => $totalJobs,
-                    'mode' => 'synchronous'
-                ]);
-                
-                $job = new ProcessMonitorCheck($monitor);
-                $job->handle();
-            } else {
-                // Dispatch to high-priority queue for immediate processing
-                ProcessMonitorCheck::dispatch($monitor)
-                    ->onQueue('monitor-checks-priority');
-                
-                Log::info('[Observer] Initial monitor check dispatched to priority queue', [
-                    'monitor_id' => $monitor->id,
-                    'type' => $monitor->type,
-                    'target' => $monitor->target,
-                    'total_jobs' => $totalJobs
-                ]);
-            }
+            Log::info('[Observer] New monitor - first check dispatched', [
+                'monitor_id' => $monitor->id,
+                'monitor_name' => $monitor->name,
+                'type' => $monitor->type,
+                'target' => $monitor->target,
+                'queue' => 'monitor-checks-priority'
+            ]);
         } catch (\Exception $e) {
-            // Fallback: always try synchronous execution if anything fails
-            Log::warning('[Observer] Failed to process initial check - trying synchronous fallback', [
+            Log::error('[Observer] Failed to dispatch initial check', [
                 'monitor_id' => $monitor->id,
                 'error' => $e->getMessage()
             ]);
-            
-            try {
-                $job = new ProcessMonitorCheck($monitor);
-                $job->handle();
-            } catch (\Exception $syncError) {
-                Log::error('[Observer] Synchronous check failed', [
-                    'monitor_id' => $monitor->id,
-                    'error' => $syncError->getMessage()
-                ]);
-            }
         }
     }
 
@@ -72,8 +51,9 @@ class MonitorObserver
                 'monitor_id' => $monitor->id
             ]);
             
-            // Update next_check_at to now so it gets picked up immediately
-            $monitor->update(['next_check_at' => now()]);
+            // Update next_check_at using saveQuietly to prevent infinite loop
+            $monitor->next_check_at = now();
+            $monitor->saveQuietly();
         }
     }
 }

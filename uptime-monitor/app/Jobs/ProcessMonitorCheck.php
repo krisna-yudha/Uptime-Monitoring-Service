@@ -50,10 +50,21 @@ class ProcessMonitorCheck implements ShouldQueue
     public $tries = 3;
 
     /**
+     * Indicate that the job should be deleted when models are missing.
+     * Prevents job from failing if monitor is deleted.
+     *
+     * @var bool
+     */
+    public $deleteWhenMissingModels = true;
+
+    /**
      * Create a new job instance.
      * 
      * IMPORTANT: We store monitor ID instead of the model itself
      * to avoid serialization issues with queue jobs.
+     * 
+     * This is a TEMPORARY job - it will auto-delete after execution.
+     * Scheduler will create new jobs, not the job itself (no auto-requeue).
      */
     public function __construct(Monitor $monitor)
     {
@@ -324,69 +335,6 @@ class ProcessMonitorCheck implements ShouldQueue
                 'trace' => $generalError->getTraceAsString()
             ]);
         } finally {
-            // Auto-requeue for next check (self-perpetuating monitoring)
-            // MOVED TO FINALLY to ensure it ALWAYS runs regardless of check success/failure
-            // This is critical for monitors with non-standard ports or any check that might fail
-            try {
-                $delay = $this->monitor->interval_seconds ?? 60;
-                
-                // Refresh monitor to get latest state
-                $freshMonitor = Monitor::find($this->monitor->id);
-                
-                // Only requeue if monitor still exists, is enabled, and not paused
-                if ($freshMonitor && $freshMonitor->enabled) {
-                    $isPaused = $freshMonitor->pause_until && $freshMonitor->pause_until > now();
-                    
-                    if (!$isPaused && $freshMonitor->type !== 'push') {
-                        // CRITICAL: Check queue health before dispatching
-                        if (!$this->canSafelyRequeue($freshMonitor->id)) {
-                            Log::warning("Monitor requeue skipped - queue health protection", [
-                                'monitor_id' => $freshMonitor->id,
-                                'reason' => 'queue_limit_reached'
-                            ]);
-                            return;
-                        }
-
-                        // DEVELOPMENT MODE: Check if queue worker is running
-                        // If no worker detected, use direct dispatch without queue
-                        $useDirectDispatch = config('app.env') === 'local' && !$this->isQueueWorkerRunning();
-                        
-                        if ($useDirectDispatch) {
-                            // Schedule next check via updated next_check_at field
-                            // Worker command will pick this up: php artisan monitor:check
-                            Log::info("Monitor scheduled for next check (no queue worker detected)", [
-                                'monitor_id' => $freshMonitor->id,
-                                'delay_seconds' => $delay,
-                                'next_check_at' => now()->addSeconds($delay)->toDateTimeString(),
-                                'mode' => 'scheduler_based'
-                            ]);
-                        } else {
-                            // Use delay to schedule next check based on interval
-                            ProcessMonitorCheck::dispatch($freshMonitor)
-                                ->delay(now()->addSeconds($delay));
-                            
-                            Log::info("Monitor auto-requeued for next check", [
-                                'monitor_id' => $freshMonitor->id,
-                                'delay_seconds' => $delay,
-                                'next_check_at' => now()->addSeconds($delay)->toDateTimeString(),
-                                'mode' => 'queue_based'
-                            ]);
-                        }
-                    } else {
-                        Log::info("Monitor not requeued", [
-                            'monitor_id' => $freshMonitor->id,
-                            'reason' => $isPaused ? 'paused' : 'push_type',
-                            'type' => $freshMonitor->type
-                        ]);
-                    }
-                }
-            } catch (\Exception $e) {
-                Log::error("CRITICAL: Failed to auto-requeue monitor - monitoring will stop!", [
-                    'monitor_id' => $this->monitor->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
-            }
             
             // Always release the advisory lock
             if ($lockAcquired) {
