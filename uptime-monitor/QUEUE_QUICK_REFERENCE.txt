@@ -1,0 +1,98 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                    QUEUE MONITORING - QUICK REFERENCE                     ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ COMMANDS                                                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│ php artisan queue:monitor-health           # Check queue status         │
+│ php artisan queue:monitor-health --cleanup # Cleanup + check            │
+│ php artisan queue:flush                    # Clear failed jobs          │
+│ php artisan queue:clear database           # Clear all pending jobs     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ DEVELOPMENT (Windows)                                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│ monitor-queue-health.bat                   # Auto-monitor every 5 min   │
+│ queue-cleanup.bat                          # Auto-cleanup every 1 hour  │
+│ php truncate_jobs.php                      # Emergency: clear all jobs  │
+│ php initialize_all_monitors.php            # Restart all monitors       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ PRODUCTION (Linux/Supervisor)                                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│ # Setup                                                                 │
+│ sudo cp supervisor-queue-monitoring.conf /etc/supervisor/conf.d/       │
+│ sudo supervisorctl reread                                              │
+│ sudo supervisorctl update                                              │
+│                                                                         │
+│ # Management                                                            │
+│ sudo supervisorctl status queue-monitoring:*                           │
+│ sudo supervisorctl start queue-monitoring:*                            │
+│ sudo supervisorctl stop queue-monitoring:*                             │
+│ sudo supervisorctl restart queue-monitoring:*                          │
+│                                                                         │
+│ # Logs                                                                  │
+│ sudo tail -f /var/log/supervisor/queue-health-monitor.log             │
+│ sudo tail -f /var/log/supervisor/queue-cleanup.log                    │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STATUS INDICATORS                                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│ ✓ OK         : Everything normal                                       │
+│ ⚠️ Warning   : Monitor closely, consider action                        │
+│ ❌ Critical  : Immediate action required                               │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ THRESHOLDS                                                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Total Jobs:          < 5,000 ✓  |  5K-10K ⚠️  |  > 10K ❌             │
+│ Per Monitor Pending: < 3 ✓      |  3-5 ⚠️      |  > 5 ❌               │
+│ Failed Jobs:         < 100 ✓    |  100-500 ⚠️  |  > 500 ❌            │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ EMERGENCY PROCEDURES                                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Queue Overflow (>10,000 jobs):                                         │
+│   1. Stop workers: supervisorctl stop uptime-queue-worker:*            │
+│   2. Disable monitors: UPDATE monitors SET enabled=0;                  │
+│   3. Clear queue: php truncate_jobs.php                                │
+│   4. Enable monitors: UPDATE monitors SET enabled=1;                   │
+│   5. Re-init: php initialize_all_monitors.php                          │
+│   6. Start workers: supervisorctl start uptime-queue-worker:*          │
+│                                                                         │
+│ Monitor Not Getting Logs:                                              │
+│   1. Check queue: php artisan queue:monitor-health                     │
+│   2. Check worker: supervisorctl status uptime-queue-worker:*          │
+│   3. Manual dispatch: php test_fix_monitor_54.php                      │
+│   4. Check logs: tail -100 storage/logs/laravel.log                    │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ KEY PROTECTIONS                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│ ✓ Max 10,000 total jobs         (auto-stops requeue)                  │
+│ ✓ Max 3 pending jobs per monitor (prevents duplicates)                │
+│ ✓ Queue health check every 5 min (monitoring)                         │
+│ ✓ Auto-cleanup stale jobs hourly (maintenance)                        │
+│ ✓ Model ID serialization         (no more ModelNotFound errors)       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ MAINTENANCE SCHEDULE                                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Every 5 min:  Queue health check (automatic via supervisor)           │
+│ Every hour:   Cleanup stale jobs (automatic via supervisor)           │
+│ Daily:        Review failed_jobs table                                │
+│ Weekly:       Flush old failed jobs (php artisan queue:flush)         │
+│ Monthly:      Review queue patterns and optimize thresholds           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+For detailed documentation, see:
+- QUEUE_MONITORING_SETUP.md     (Supervisor setup guide)
+- QUEUE_MITIGATION_SUMMARY.md   (Implementation details)

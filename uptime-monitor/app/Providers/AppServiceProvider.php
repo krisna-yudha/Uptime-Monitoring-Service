@@ -4,7 +4,9 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use App\Models\NotificationChannel;
+use App\Models\Monitor;
 use App\Observers\NotificationChannelObserver;
+use App\Observers\MonitorObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -21,7 +23,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Register NotificationChannel observer for auto webhook setup
+        // Register observers
         NotificationChannel::observe(NotificationChannelObserver::class);
+        Monitor::observe(MonitorObserver::class);
     }
 }

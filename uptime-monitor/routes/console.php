@@ -31,4 +31,16 @@ Schedule::command('logs:cleanup')->monthlyOn(1, '03:00');
 // Schedule queue jobs cleanup - runs every 5 minutes
 // Keeps maximum 5000 jobs in queue to prevent bloat
 Schedule::command('queue:cleanup --max-jobs=5000')->everyFiveMinutes();
+
+// Schedule queue health monitoring every 5 minutes
+Schedule::command('queue:monitor-health')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Auto-cleanup stale jobs every hour (jobs older than 2 hours)
+Schedule::command('queue:monitor-health --cleanup --max-age=7200')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
     

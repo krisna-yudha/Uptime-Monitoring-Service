@@ -20,7 +20,20 @@ class ProcessMonitorCheck implements ShouldQueue
 {
     use Queueable;
 
-    protected Monitor $monitor;
+    protected int $monitorId;
+    protected ?Monitor $monitor = null;
+
+    /**
+     * Maximum number of jobs allowed in queue before stopping auto-requeue
+     * Prevents queue overflow and server overload
+     */
+    const MAX_QUEUE_SIZE = 10000;
+
+    /**
+     * Maximum number of pending jobs per monitor
+     * Prevents duplicate job accumulation
+     */
+    const MAX_PENDING_PER_MONITOR = 3;
 
     /**
      * The number of seconds the job can run before timing out.
@@ -38,10 +51,13 @@ class ProcessMonitorCheck implements ShouldQueue
 
     /**
      * Create a new job instance.
+     * 
+     * IMPORTANT: We store monitor ID instead of the model itself
+     * to avoid serialization issues with queue jobs.
      */
     public function __construct(Monitor $monitor)
     {
-        $this->monitor = $monitor;
+        $this->monitorId = $monitor->id;
         $this->onQueue('monitor-checks');
     }
 
@@ -69,17 +85,18 @@ class ProcessMonitorCheck implements ShouldQueue
      */
     public function handle(): void
     {
-        // Check if monitor still exists (in case it was deleted while job was queued)
-        $monitor = Monitor::find($this->monitor->id);
+        // CRITICAL FIX: Load monitor from database using stored ID
+        // This prevents serialization issues with Eloquent models in queue
+        $monitor = Monitor::find($this->monitorId);
         if (!$monitor) {
             Log::warning("Monitor job skipped - Monitor not found", [
-                'monitor_id' => $this->monitor->id,
+                'monitor_id' => $this->monitorId,
                 'job_class' => static::class
             ]);
             return;
         }
 
-        // Update our monitor reference to the fresh instance
+        // Set the monitor instance for use in other methods
         $this->monitor = $monitor;
 
         // Log check start
@@ -321,15 +338,40 @@ class ProcessMonitorCheck implements ShouldQueue
                     $isPaused = $freshMonitor->pause_until && $freshMonitor->pause_until > now();
                     
                     if (!$isPaused && $freshMonitor->type !== 'push') {
-                        // Use delay to schedule next check based on interval
-                        ProcessMonitorCheck::dispatch($freshMonitor)
-                            ->delay(now()->addSeconds($delay));
+                        // CRITICAL: Check queue health before dispatching
+                        if (!$this->canSafelyRequeue($freshMonitor->id)) {
+                            Log::warning("Monitor requeue skipped - queue health protection", [
+                                'monitor_id' => $freshMonitor->id,
+                                'reason' => 'queue_limit_reached'
+                            ]);
+                            return;
+                        }
+
+                        // DEVELOPMENT MODE: Check if queue worker is running
+                        // If no worker detected, use direct dispatch without queue
+                        $useDirectDispatch = config('app.env') === 'local' && !$this->isQueueWorkerRunning();
                         
-                        Log::info("Monitor auto-requeued for next check", [
-                            'monitor_id' => $freshMonitor->id,
-                            'delay_seconds' => $delay,
-                            'next_check_at' => now()->addSeconds($delay)->toDateTimeString()
-                        ]);
+                        if ($useDirectDispatch) {
+                            // Schedule next check via updated next_check_at field
+                            // Worker command will pick this up: php artisan monitor:check
+                            Log::info("Monitor scheduled for next check (no queue worker detected)", [
+                                'monitor_id' => $freshMonitor->id,
+                                'delay_seconds' => $delay,
+                                'next_check_at' => now()->addSeconds($delay)->toDateTimeString(),
+                                'mode' => 'scheduler_based'
+                            ]);
+                        } else {
+                            // Use delay to schedule next check based on interval
+                            ProcessMonitorCheck::dispatch($freshMonitor)
+                                ->delay(now()->addSeconds($delay));
+                            
+                            Log::info("Monitor auto-requeued for next check", [
+                                'monitor_id' => $freshMonitor->id,
+                                'delay_seconds' => $delay,
+                                'next_check_at' => now()->addSeconds($delay)->toDateTimeString(),
+                                'mode' => 'queue_based'
+                            ]);
+                        }
                     } else {
                         Log::info("Monitor not requeued", [
                             'monitor_id' => $freshMonitor->id,
@@ -1421,5 +1463,90 @@ class ProcessMonitorCheck implements ShouldQueue
 
         // Relative path (images/icon.png)
         return $baseUrl . '/' . $iconUrl;
+    }
+
+    /**
+     * Check if it's safe to requeue the monitor job
+     * Prevents queue overflow by checking:
+     * 1. Total queue size
+     * 2. Pending jobs for this specific monitor
+     * 
+     * @param int $monitorId
+     * @return bool
+     */
+    private function canSafelyRequeue(int $monitorId): bool
+    {
+        try {
+            // Check 1: Total queue size
+            $totalQueueSize = DB::table('jobs')->count();
+            
+            if ($totalQueueSize >= self::MAX_QUEUE_SIZE) {
+                Log::critical("Queue size limit reached - auto-requeue disabled", [
+                    'total_jobs' => $totalQueueSize,
+                    'limit' => self::MAX_QUEUE_SIZE,
+                    'monitor_id' => $monitorId
+                ]);
+                return false;
+            }
+
+            // Check 2: Pending jobs for this specific monitor
+            // Count jobs that haven't been processed yet (attempts = 0)
+            $pendingForMonitor = DB::table('jobs')
+                ->where(function($query) {
+                    $query->where('queue', 'monitor-checks')
+                          ->orWhere('queue', 'monitor-checks-priority');
+                })
+                ->where('attempts', 0)
+                ->where('payload', 'LIKE', '%"monitorId":' . $monitorId . '%')
+                ->count();
+
+            if ($pendingForMonitor >= self::MAX_PENDING_PER_MONITOR) {
+                Log::warning("Monitor has too many pending jobs - skipping requeue", [
+                    'monitor_id' => $monitorId,
+                    'pending_jobs' => $pendingForMonitor,
+                    'limit' => self::MAX_PENDING_PER_MONITOR
+                ]);
+                return false;
+            }
+
+            // Check 3: If queue is getting large, log warning
+            if ($totalQueueSize > self::MAX_QUEUE_SIZE * 0.7) {
+                Log::warning("Queue approaching limit - consider scaling workers", [
+                    'total_jobs' => $totalQueueSize,
+                    'threshold' => self::MAX_QUEUE_SIZE * 0.7,
+                    'limit' => self::MAX_QUEUE_SIZE
+                ]);
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            // If we can't check queue health, err on the side of caution
+            Log::error("Failed to check queue health - allowing requeue", [
+                'monitor_id' => $monitorId,
+                'error' => $e->getMessage()
+            ]);
+            return true; // Allow requeue if health check fails
+        }
+    }
+
+    /**
+     * Check if queue worker is running
+     * Simple heuristic: check if there are recently processed jobs
+     * 
+     * @return bool
+     */
+    private function isQueueWorkerRunning(): bool
+    {
+        try {
+            // Check if any job was processed in last 60 seconds
+            $recentlyProcessed = DB::table('jobs')
+                ->where('reserved_at', '>', now()->subSeconds(60)->timestamp)
+                ->exists();
+            
+            return $recentlyProcessed;
+        } catch (\Exception $e) {
+            // If check fails, assume worker is running (safer default)
+            return true;
+        }
     }
 }

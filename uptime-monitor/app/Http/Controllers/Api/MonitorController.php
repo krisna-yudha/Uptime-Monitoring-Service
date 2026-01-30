@@ -207,25 +207,51 @@ class MonitorController extends Controller
         $monitor = Monitor::create($data);
         $monitor->load('creator:id,name,email');
 
-        // Execute initial monitor check with timeout optimization
-        // Use queue with high priority for faster processing without blocking response
+        // Execute initial monitor check
+        // Strategy: Run synchronously if queue is overloaded, otherwise dispatch
         try {
-            // Dispatch to high-priority queue for immediate processing
-            \App\Jobs\ProcessMonitorCheck::dispatch($monitor)
-                ->onQueue('monitor-checks-priority')
-                ->afterCommit();
+            $totalJobs = DB::table('jobs')->count();
             
-            Log::info('Initial monitor check dispatched to priority queue', [
-                'monitor_id' => $monitor->id,
-                'type' => $monitor->type,
-                'target' => $monitor->target
-            ]);
+            // If queue is overloaded (>15000 jobs), run synchronously for immediate feedback
+            if ($totalJobs > 15000) {
+                Log::warning('Queue overloaded - running synchronous initial check', [
+                    'monitor_id' => $monitor->id,
+                    'total_jobs' => $totalJobs,
+                    'mode' => 'synchronous'
+                ]);
+                
+                $job = new \App\Jobs\ProcessMonitorCheck($monitor);
+                $job->handle();
+                $monitor->refresh();
+            } else {
+                // Dispatch to high-priority queue for immediate processing
+                \App\Jobs\ProcessMonitorCheck::dispatch($monitor)
+                    ->onQueue('monitor-checks-priority');
+                
+                Log::info('Initial monitor check dispatched to priority queue', [
+                    'monitor_id' => $monitor->id,
+                    'type' => $monitor->type,
+                    'target' => $monitor->target,
+                    'total_jobs' => $totalJobs
+                ]);
+            }
         } catch (\Exception $e) {
-            // Log error but don't fail the creation
-            Log::warning('Failed to dispatch initial monitor check', [
+            // Fallback: always try synchronous execution if anything fails
+            Log::warning('Failed to process initial check - trying synchronous fallback', [
                 'monitor_id' => $monitor->id,
                 'error' => $e->getMessage()
             ]);
+            
+            try {
+                $job = new \App\Jobs\ProcessMonitorCheck($monitor);
+                $job->handle();
+                $monitor->refresh();
+            } catch (\Exception $syncError) {
+                Log::error('Synchronous check failed', [
+                    'monitor_id' => $monitor->id,
+                    'error' => $syncError->getMessage()
+                ]);
+            }
         }
 
         // Return immediately without waiting for check to complete
@@ -901,5 +927,36 @@ class MonitorController extends Controller
             'updated_count' => $updated,
             'mode' => $mode
         ]);
+    }
+
+    /**
+     * Check if queue worker is running
+     */
+    private function isQueueWorkerRunning(): bool
+    {
+        try {
+            // Check if there are any active queue workers by looking at recent job processing
+            $recentlyProcessed = DB::table('jobs')
+                ->where('reserved_at', '>', now()->subMinutes(2)->timestamp)
+                ->exists();
+
+            if ($recentlyProcessed) {
+                return true;
+            }
+
+            // Fallback: try to detect worker process (Windows/Linux compatible)
+            if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                // Windows: check for php process running artisan queue:work
+                $output = shell_exec('tasklist /FI "IMAGENAME eq php.exe" 2>nul');
+                return $output && stripos($output, 'php.exe') !== false;
+            } else {
+                // Linux: check for artisan queue:work process
+                $output = shell_exec('ps aux | grep "[q]ueue:work" 2>/dev/null');
+                return !empty($output);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to detect queue worker status', ['error' => $e->getMessage()]);
+            return false;
+        }
     }
 }
