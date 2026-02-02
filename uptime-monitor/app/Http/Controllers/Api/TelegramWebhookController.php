@@ -22,18 +22,24 @@ class TelegramWebhookController extends Controller
             $update = $request->all();
             Log::info('Telegram webhook received', ['update' => $update]);
 
-            // Extract message data
-            if (!isset($update['message'])) {
-                return response()->json(['ok' => true]);
-            }
-
-            $message = $update['message'];
-            $chatId = $message['chat']['id'];
-            $text = $message['text'] ?? '';
-            
-            // Handle commands
-            if (strpos($text, '/') === 0) {
-                $this->handleCommand($chatId, $text);
+            // Handle regular messages
+            if (isset($update['message'])) {
+                $message = $update['message'];
+                $chatId = $message['chat']['id'];
+                $text = $message['text'] ?? '';
+                
+                // Handle commands
+                if (strpos($text, '/') === 0) {
+                    $this->handleCommand($chatId, $text);
+                }
+            } elseif (isset($update['callback_query'])) {
+                // Handle inline keyboard button callbacks
+                $callbackQuery = $update['callback_query'];
+                $chatId = $callbackQuery['message']['chat']['id'];
+                $data = $callbackQuery['data'];
+                $callbackId = $callbackQuery['id'];
+                
+                $this->handleCallback($chatId, $data, $callbackId);
             }
 
             return response()->json(['ok' => true]);
@@ -44,6 +50,48 @@ class TelegramWebhookController extends Controller
             ]);
             
             return response()->json(['ok' => false], 500);
+        }
+    }
+
+    /**
+     * Handle inline keyboard callbacks
+     */
+    private function handleCallback(string $chatId, string $data, string $callbackId): void
+    {
+        Log::info('Handling callback', ['chat_id' => $chatId, 'data' => $data]);
+        
+        // Answer callback query to remove loading state
+        $this->answerCallback($callbackId);
+        
+        // Parse callback data
+        $parts = explode(':', $data, 2);
+        $action = $parts[0];
+        $param = $parts[1] ?? '';
+        
+        switch ($action) {
+            case 'status':
+                $this->sendStatus($chatId);
+                break;
+            case 'monitors':
+                $this->sendMonitors($chatId);
+                break;
+            case 'groups':
+                $this->sendMonitorGroups($chatId);
+                break;
+            case 'incidents':
+                $this->sendIncidents($chatId, $param);
+                break;
+            case 'uptime':
+                $this->sendUptime($chatId);
+                break;
+            case 'help':
+                $this->sendHelp($chatId);
+                break;
+            case 'group':
+                $this->sendGroupMonitors($chatId, $param);
+                break;
+            default:
+                $this->sendMessage($chatId, "⚠️ Unknown action: {$action}");
         }
     }
 
@@ -141,7 +189,24 @@ class TelegramWebhookController extends Controller
         $message .= "Gunakan Chat ID ini untuk setup notifikasi di dashboard.\n";
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━";
 
-        $this->sendMessage($chatId, $message);
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '📊 Status', 'callback_data' => 'status'],
+                    ['text' => '📋 Monitors', 'callback_data' => 'monitors'],
+                ],
+                [
+                    ['text' => '📁 Groups', 'callback_data' => 'groups'],
+                    ['text' => '🚨 Incidents', 'callback_data' => 'incidents'],
+                ],
+                [
+                    ['text' => '📈 Uptime', 'callback_data' => 'uptime'],
+                    ['text' => '❓ Help', 'callback_data' => 'help'],
+                ],
+            ]
+        ];
+
+        $this->sendMessage($chatId, $message, $keyboard);
     }
 
     private function sendHelp(string $chatId): void
@@ -182,7 +247,20 @@ class TelegramWebhookController extends Controller
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
         $message .= "💡 Tip: Gunakan `/search` untuk cari monitor cepat!";
 
-        $this->sendMessage($chatId, $message);
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '📊 Lihat Status', 'callback_data' => 'status'],
+                    ['text' => '🚨 Lihat Incidents', 'callback_data' => 'incidents'],
+                ],
+                [
+                    ['text' => '📁 Lihat Groups', 'callback_data' => 'groups'],
+                    ['text' => '📈 Lihat Uptime', 'callback_data' => 'uptime'],
+                ],
+            ]
+        ];
+
+        $this->sendMessage($chatId, $message, $keyboard);
     }
 
     private function sendStatus(string $chatId): void
@@ -276,7 +354,20 @@ class TelegramWebhookController extends Controller
             $message .= " | ⚪ Unknown: *{$unknownCount}*";
         }
 
-        $this->sendMessage($chatId, $message);
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '🔄 Refresh', 'callback_data' => 'status'],
+                    ['text' => '📁 Groups', 'callback_data' => 'groups'],
+                ],
+                [
+                    ['text' => '🚨 Incidents', 'callback_data' => 'incidents'],
+                    ['text' => '📈 Uptime', 'callback_data' => 'uptime'],
+                ],
+            ]
+        ];
+
+        $this->sendMessage($chatId, $message, $keyboard);
     }
 
     private function sendIncidents(string $chatId, string $filter = ''): void
@@ -379,7 +470,24 @@ class TelegramWebhookController extends Controller
         $message .= "`/incidents today` - Today only\n";
         $message .= "`/incidents week` - This week";
 
-        $this->sendMessage($chatId, $message);
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '🔴 Open', 'callback_data' => 'incidents:open'],
+                    ['text' => '✅ Resolved', 'callback_data' => 'incidents:resolved'],
+                ],
+                [
+                    ['text' => '📅 Today', 'callback_data' => 'incidents:today'],
+                    ['text' => '📆 This Week', 'callback_data' => 'incidents:week'],
+                ],
+                [
+                    ['text' => '📋 All', 'callback_data' => 'incidents:'],
+                    ['text' => '🔄 Refresh', 'callback_data' => 'incidents:' . strtolower(trim($filter))],
+                ],
+            ]
+        ];
+
+        $this->sendMessage($chatId, $message, $keyboard);
     }
 
     private function sendMonitors(string $chatId): void
@@ -431,7 +539,19 @@ class TelegramWebhookController extends Controller
         $message .= "`/group {nama}` - Monitor per group\n";
         $message .= "`/monitor {nama}` - Detail monitor";
 
-        $this->sendMessage($chatId, $message);
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '📁 Lihat Groups', 'callback_data' => 'groups'],
+                    ['text' => '📊 Status', 'callback_data' => 'status'],
+                ],
+                [
+                    ['text' => '🔄 Refresh', 'callback_data' => 'monitors'],
+                ],
+            ]
+        ];
+
+        $this->sendMessage($chatId, $message, $keyboard);
     }
 
     private function sendUptime(string $chatId): void
@@ -519,7 +639,20 @@ class TelegramWebhookController extends Controller
         $message .= "{$avgEmoji} *Average Uptime:* " . number_format($avgUptime, 2) . "%\n";
         $message .= "📊 Total Monitors: {$count}";
 
-        $this->sendMessage($chatId, $message);
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '🔄 Refresh', 'callback_data' => 'uptime'],
+                    ['text' => '📊 Status', 'callback_data' => 'status'],
+                ],
+                [
+                    ['text' => '📁 Groups', 'callback_data' => 'groups'],
+                    ['text' => '🚨 Incidents', 'callback_data' => 'incidents'],
+                ],
+            ]
+        ];
+
+        $this->sendMessage($chatId, $message, $keyboard);
     }
 
     private function sendMonitorGroups(string $chatId): void
@@ -561,7 +694,37 @@ class TelegramWebhookController extends Controller
         $message .= "💡 Untuk melihat detail group:\n";
         $message .= "`/group {nama_group}`";
         
-        $this->sendMessage($chatId, $message);
+        // Create keyboard with group buttons (max 2 per row, max 10 groups)
+        $buttons = [];
+        $count = 0;
+        foreach ($grouped as $groupName => $groupMonitors) {
+            if ($count >= 10) break;
+            $group = $groupName ?? 'Uncategorized';
+            $up = $groupMonitors->where('last_status', 'up')->count();
+            $total = $groupMonitors->count();
+            $emoji = ($up / $total) >= 0.95 ? '🟢' : (($up / $total) >= 0.8 ? '🟡' : '🔴');
+            
+            $buttons[] = ['text' => "{$emoji} {$group}", 'callback_data' => "group:{$group}"];
+            $count++;
+        }
+        
+        // Arrange buttons in rows of 2
+        $keyboard = ['inline_keyboard' => []];
+        for ($i = 0; $i < count($buttons); $i += 2) {
+            $row = [$buttons[$i]];
+            if (isset($buttons[$i + 1])) {
+                $row[] = $buttons[$i + 1];
+            }
+            $keyboard['inline_keyboard'][] = $row;
+        }
+        
+        // Add refresh button
+        $keyboard['inline_keyboard'][] = [
+            ['text' => '🔄 Refresh', 'callback_data' => 'groups'],
+            ['text' => '📊 Status', 'callback_data' => 'status'],
+        ];
+        
+        $this->sendMessage($chatId, $message, $keyboard);
     }
 
     private function sendGroupMonitors(string $chatId, string $groupName): void
@@ -627,7 +790,20 @@ class TelegramWebhookController extends Controller
         }
         $message .= "\n💚 Health: " . number_format($healthPercent, 1) . "%";
         
-        $this->sendMessage($chatId, $message);
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '🔄 Refresh', 'callback_data' => "group:{$actualGroup}"],
+                    ['text' => '📁 All Groups', 'callback_data' => 'groups'],
+                ],
+                [
+                    ['text' => '📊 Status', 'callback_data' => 'status'],
+                    ['text' => '🚨 Incidents', 'callback_data' => 'incidents'],
+                ],
+            ]
+        ];
+        
+        $this->sendMessage($chatId, $message, $keyboard);
     }
 
     private function sendMonitorDetail(string $chatId, string $search): void
@@ -809,7 +985,7 @@ class TelegramWebhookController extends Controller
     /**
      * Send message to Telegram
      */
-    private function sendMessage(string $chatId, string $text): void
+    private function sendMessage(string $chatId, string $text, ?array $keyboard = null): void
     {
         Log::info('Attempting to send Telegram message', ['chat_id' => $chatId, 'text_length' => strlen($text)]);
         
@@ -835,14 +1011,20 @@ class TelegramWebhookController extends Controller
         Log::info('Sending message to Telegram API', ['bot_token_length' => strlen($botToken)]);
 
         try {
+            $payload = [
+                'chat_id' => $chatId,
+                'text' => $text,
+                'parse_mode' => 'Markdown',
+                'disable_web_page_preview' => true,
+            ];
+            
+            if ($keyboard !== null) {
+                $payload['reply_markup'] = json_encode($keyboard);
+            }
+            
             $response = Http::withOptions(['verify' => false])
                 ->timeout(30)
-                ->post("https://api.telegram.org/bot{$botToken}/sendMessage", [
-                    'chat_id' => $chatId,
-                    'text' => $text,
-                    'parse_mode' => 'Markdown',
-                    'disable_web_page_preview' => true,
-                ]);
+                ->post("https://api.telegram.org/bot{$botToken}/sendMessage", $payload);
 
             if (!$response->successful()) {
                 Log::error('Failed to send Telegram message', [
@@ -858,6 +1040,41 @@ class TelegramWebhookController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+        }
+    }
+
+    /**
+     * Answer callback query to remove loading state
+     */
+    private function answerCallback(string $callbackId, ?string $text = null): void
+    {
+        $channel = NotificationChannel::where('type', 'telegram')
+            ->where('is_enabled', true)
+            ->first();
+
+        if (!$channel) {
+            return;
+        }
+
+        $config = is_string($channel->config) ? json_decode($channel->config, true) : $channel->config;
+        $botToken = $config['bot_token'] ?? '';
+
+        if (empty($botToken)) {
+            return;
+        }
+
+        try {
+            $payload = ['callback_query_id' => $callbackId];
+            
+            if ($text !== null) {
+                $payload['text'] = $text;
+            }
+            
+            Http::withOptions(['verify' => false])
+                ->timeout(10)
+                ->post("https://api.telegram.org/bot{$botToken}/answerCallbackQuery", $payload);
+        } catch (\Exception $e) {
+            Log::error('Answer callback error', ['error' => $e->getMessage()]);
         }
     }
 }
