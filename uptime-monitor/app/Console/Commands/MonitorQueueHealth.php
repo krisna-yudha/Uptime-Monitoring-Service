@@ -15,7 +15,9 @@ class MonitorQueueHealth extends Command
      */
     protected $signature = 'queue:monitor-health 
                             {--cleanup : Cleanup old/stale jobs}
-                            {--max-age=3600 : Maximum age in seconds for jobs before cleanup}';
+                            {--max-age=3600 : Maximum age in seconds for jobs before cleanup}
+                            {--watch : Run continuously with interval}
+                            {--interval=300 : Interval in seconds between checks when watching}';
 
     /**
      * The console command description.
@@ -29,7 +31,33 @@ class MonitorQueueHealth extends Command
      */
     public function handle()
     {
+        // Watch mode: run continuously
+        if ($this->option('watch')) {
+            $this->info('=== Queue Health Monitor - Watch Mode ===');
+            $this->info('Monitoring queue health every ' . $this->option('interval') . ' seconds');
+            $this->info('Press Ctrl+C to stop');
+            $this->newLine();
+            
+            while (true) {
+                $this->runHealthCheck();
+                $this->newLine();
+                $this->comment('Next check in ' . $this->option('interval') . ' seconds...');
+                $this->newLine();
+                sleep($this->option('interval'));
+            }
+        }
+        
+        // Single run mode
+        return $this->runHealthCheck();
+    }
+
+    /**
+     * Run a single health check
+     */
+    private function runHealthCheck(): int
+    {
         $this->info('=== Queue Health Monitor ===');
+        $this->info('[' . now()->format('Y-m-d H:i:s') . ']');
         $this->newLine();
 
         // Get queue statistics

@@ -20,6 +20,34 @@ For detailed guide, see [QUICK_START.md](QUICK_START.md)
 
 ---
 
+## ⚡ Optimized Setup (Log Cepat & Auto-Cleanup)
+
+Untuk **monitor baru langsung muncul log** (2-5 detik) dan **jobs auto-cleanup**, gunakan setup optimized:
+
+### Development (Windows/XAMPP):
+```batch
+# One-click start optimized workers
+start-optimized-workers.bat
+```
+
+### Production (Linux/Supervisor):
+```bash
+# Setup supervisor dengan config optimized
+sudo cp supervisor-optimized.conf /etc/supervisor/conf.d/uptime-monitor.conf
+sudo supervisorctl reread && sudo supervisorctl update
+sudo supervisorctl start uptime-monitor:*
+```
+
+**Hasil:**
+- ✅ Monitor baru → log muncul **2-5 detik** (priority queue)
+- ✅ Jobs auto-cleanup setiap **30 menit** (no manual intervention)
+- ✅ Alert otomatis jika queue overflow
+
+**📖 Full Documentation:** [CARA_SETTING_MONITORING.md](CARA_SETTING_MONITORING.md)  
+**📋 Quick Reference:** [QUICK_START_OPTIMIZED.txt](QUICK_START_OPTIMIZED.txt)
+
+---
+
 ## 🌟 Features
 
 - ✅ **Real-time Monitoring** - HTTP, PING, PORT checks (down to 1-second intervals)
@@ -264,25 +292,33 @@ Supported notification types:
 
 | Script | Purpose |
 |--------|---------|
-| `start-monitoring.bat` | Start ALL services |
+| `start-monitoring.bat` | Start ALL services (Laravel + Workers + Frontend) |
 | `stop-monitoring.bat` | Stop ALL services |
-| `start_all_workers.bat` | Start workers only |
+| **`start-optimized-workers.bat`** | ⭐ **Start optimized workers (log cepat + auto-cleanup)** |
+| **`auto-queue-cleanup.bat`** | **Auto cleanup jobs setiap 30 menit** |
+| **`setup-windows-tasks.bat`** | **Setup Windows Task Scheduler (run as admin)** |
+| `start_all_workers.bat` | Start workers only (standard) |
 | `worker_manager.bat` | Interactive worker menu |
 | `trigger_incident.bat` | Test notifications |
 | `setup_notifications.php` | Link monitors to channels |
+| **`test-optimized-setup.bat`** | **Test optimized setup** |
 
 ---
 
 ## 📖 Documentation
 
 - [QUICK_START.md](QUICK_START.md) - Quick start guide
-- [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) - **Complete production setup guide**
-- [RESEARCH_AND_DEVELOPMENT.md](RESEARCH_AND_DEVELOPMENT.md) - **RnD guide for developers**
-- [ARCHITECTURE.md](ARCHITECTURE.md) - **System architecture & diagrams**
-- [DEVELOPER_QUICK_REFERENCE.md](DEVELOPER_QUICK_REFERENCE.md) - **Quick reference for developers**
+- **[CARA_SETTING_MONITORING.md](CARA_SETTING_MONITORING.md) - Setup log cepat & auto-cleanup** ⭐
+- **[QUICK_START_OPTIMIZED.txt](QUICK_START_OPTIMIZED.txt) - Quick reference optimized setup**
+- **[OPTIMIZED_MONITORING_SETUP.md](OPTIMIZED_MONITORING_SETUP.md) - Full optimized setup guide**
+- [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) - Complete production setup guide
+- [RESEARCH_AND_DEVELOPMENT.md](RESEARCH_AND_DEVELOPMENT.md) - RnD guide for developers
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture & diagrams
+- [DEVELOPER_QUICK_REFERENCE.md](DEVELOPER_QUICK_REFERENCE.md) - Quick reference for developers
 - [NOTIFICATION_SYSTEM_READY.md](NOTIFICATION_SYSTEM_READY.md) - Notification system docs
 - [TROUBLESHOOTING_NOTIFICATIONS.md](TROUBLESHOOTING_NOTIFICATIONS.md) - Troubleshooting
 - [WORKERS_README.md](WORKERS_README.md) - Worker documentation
+- [QUEUE_QUICK_REFERENCE.txt](QUEUE_QUICK_REFERENCE.txt) - Queue monitoring commands
 
 ---
 
