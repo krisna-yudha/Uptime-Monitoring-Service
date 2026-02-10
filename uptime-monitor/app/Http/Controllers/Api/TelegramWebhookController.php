@@ -577,7 +577,8 @@ class TelegramWebhookController extends Controller
         $excellent = []; // >= 99%
 
         foreach ($monitors as $monitor) {
-            $uptime = $monitor->uptime_percentage ?? 0;
+            // Calculate uptime from last 24 hours or use stored value
+            $uptime = $this->calculateMonitorUptime($monitor);
             
             if ($uptime < 90) {
                 $poor[] = ['name' => $monitor->name, 'uptime' => $uptime];
@@ -626,7 +627,8 @@ class TelegramWebhookController extends Controller
         $message .= "{$avgEmoji} *Rata-rata Uptime*\n";
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
         $message .= "📊 " . number_format($avgUptime, 2) . "%\n";
-        $message .= "📋 {$count} monitors aktif";
+        $message .= "📋 {$count} monitors aktif\n";
+        $message .= "⏱️ Based on last 24 hours";
 
         $keyboard = [
             'inline_keyboard' => [
@@ -642,6 +644,57 @@ class TelegramWebhookController extends Controller
         ];
 
         $this->sendMessage($chatId, $message, $keyboard);
+    }
+
+    /**
+     * Calculate uptime percentage for a monitor
+     */
+    private function calculateMonitorUptime($monitor): float
+    {
+        // Try to use uptime_percentage column if it exists and has value
+        if (isset($monitor->uptime_percentage) && $monitor->uptime_percentage > 0) {
+            return $monitor->uptime_percentage;
+        }
+        
+        // Calculate from incidents in last 24 hours
+        $last24Hours = now()->subDay();
+        
+        $incidents = Incident::where('monitor_id', $monitor->id)
+            ->where('started_at', '>=', $last24Hours)
+            ->get();
+        
+        if ($incidents->isEmpty()) {
+            // No incidents in last 24 hours = 100% uptime
+            return 100.0;
+        }
+        
+        $totalDowntimeMinutes = 0;
+        
+        foreach ($incidents as $incident) {
+            $startedAt = \Carbon\Carbon::parse($incident->started_at);
+            
+            // If still ongoing, calculate till now
+            $endedAt = $incident->resolved_at 
+                ? \Carbon\Carbon::parse($incident->resolved_at) 
+                : now();
+            
+            // Only count time within last 24 hours
+            $startedAt = $startedAt->max($last24Hours);
+            
+            $downtimeMinutes = $startedAt->diffInMinutes($endedAt);
+            $totalDowntimeMinutes += $downtimeMinutes;
+        }
+        
+        // Total minutes in 24 hours = 1440
+        $totalMinutes = 1440;
+        $uptimeMinutes = $totalMinutes - $totalDowntimeMinutes;
+        
+        // Ensure it doesn't go below 0
+        $uptimeMinutes = max(0, $uptimeMinutes);
+        
+        $uptimePercentage = ($uptimeMinutes / $totalMinutes) * 100;
+        
+        return round($uptimePercentage, 2);
     }
 
     private function sendMonitorGroups(string $chatId): void
