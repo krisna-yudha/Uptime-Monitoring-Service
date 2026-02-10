@@ -1,26 +1,46 @@
 <?php
 
-require __DIR__.'/vendor/autoload.php';
+require __DIR__ . '/vendor/autoload.php';
+
+$app = require __DIR__ . '/bootstrap/app.php';
+$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
 
 use Illuminate\Support\Facades\DB;
 
-$app = require_once __DIR__.'/bootstrap/app.php';
-$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
+echo "=== CHECKING FAILED JOBS ===\n\n";
 
-echo "=== Failed Jobs Details ===\n\n";
-
-$failedJob = DB::table('failed_jobs')
+$failedJobs = DB::table('failed_jobs')
     ->orderBy('failed_at', 'desc')
-    ->first();
+    ->limit(5)
+    ->get();
 
-if (!$failedJob) {
+if ($failedJobs->count() > 0) {
+    foreach ($failedJobs as $job) {
+        echo "Failed Job ID: {$job->id}\n";
+        echo "UUID: {$job->uuid}\n";
+        echo "Connection: {$job->connection}\n";
+        echo "Queue: {$job->queue}\n";
+        echo "Failed At: {$job->failed_at}\n";
+        
+        // Decode payload to see monitor ID
+        $payload = json_decode($job->payload, true);
+        if (isset($payload['displayName'])) {
+            echo "Job: {$payload['displayName']}\n";
+        }
+        
+        // Try to extract monitor ID from the payload
+        if (isset($payload['data']['command'])) {
+            $command = unserialize($payload['data']['command']);
+            if (isset($command->monitor)) {
+                echo "Monitor ID: {$command->monitor->id}\n";
+                echo "Monitor Name: {$command->monitor->name}\n";
+            }
+        }
+        
+        echo "Exception:\n";
+        echo substr($job->exception, 0, 500) . "...\n";
+        echo "\n" . str_repeat('-', 80) . "\n\n";
+    }
+} else {
     echo "No failed jobs found.\n";
-    exit(0);
 }
-
-echo "UUID: {$failedJob->uuid}\n";
-echo "Queue: {$failedJob->queue}\n";
-echo "Failed At: {$failedJob->failed_at}\n\n";
-
-echo "=== Exception ===\n";
-echo $failedJob->exception . "\n";
