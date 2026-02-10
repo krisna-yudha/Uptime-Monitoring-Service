@@ -160,29 +160,16 @@ class TelegramWebhookController extends Controller
         $message .= "Selamat datang! Bot ini akan mengirimkan notifikasi otomatis ketika ada service yang down atau up kembali.\n\n";
         
         $message .= "┌─────────────────────────┐\n";
-        $message .= "│ 📊 *MONITORING COMMANDS* │\n";
-        $message .= "└─────────────────────────┘\n";
-        $message .= "📈 /status - Status semua monitor\n";
-        $message .= "🔍 /monitors - Daftar monitor\n";
-        $message .= "📁 /groups - Daftar group monitor\n";
-        $message .= "🔎 /monitor {nama} - Detail monitor\n";
-        $message .= "🔍 /search {keyword} - Cari monitor\n";
-        $message .= "🔔 /group {nama} - Monitor per group\n\n";
+        $message .= "│   📱 *MENU UTAMA*        │\n";
+        $message .= "└─────────────────────────┘\n\n";
         
-        $message .= "┌─────────────────────────┐\n";
-        $message .= "│ 🚨 *INCIDENT COMMANDS*   │\n";
-        $message .= "└─────────────────────────┘\n";
-        $message .= "⚠️ /incidents - 10 incident terbaru\n";
-        $message .= "🔍 /incidents open - Incident yang masih open\n";
-        $message .= "✅ /incidents resolved - Incident yang sudah resolved\n";
-        $message .= "📅 /incidents today - Incident hari ini\n\n";
-        
-        $message .= "┌─────────────────────────┐\n";
-        $message .= "│ 📊 *STATISTICS*          │\n";
-        $message .= "└─────────────────────────┘\n";
-        $message .= "📈 /uptime - Statistik uptime\n";
-        $message .= "🏓 /ping - Cek bot aktif\n";
-        $message .= "❓ /help - Panduan lengkap\n\n";
+        $message .= "Pilih menu di bawah untuk:\n";
+        $message .= "• 📊 Lihat status semua monitor\n";
+        $message .= "• 📋 Daftar monitor aktif\n";
+        $message .= "• 📁 Group monitoring\n";
+        $message .= "• 🚨 Laporan incident\n";
+        $message .= "• 📈 Statistik uptime\n";
+        $message .= "• ❓ Panduan lengkap\n\n";
         
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━\n";
         $message .= "💡 *Chat ID:* `{$chatId}`\n";
