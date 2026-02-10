@@ -259,87 +259,83 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        $upCount = 0;
-        $downCount = 0;
-        $unknownCount = 0;
-        
         $message = "╔══════════════════════════╗\n";
         $message .= "║   📊 *STATUS MONITOR*     ║\n";
         $message .= "╚══════════════════════════╝\n\n";
         
-        // Group by status for better display
-        $upMonitors = [];
-        $downMonitors = [];
-        $unknownMonitors = [];
+        // Group monitors by group_name
+        $grouped = $monitors->groupBy('group_name');
         
-        foreach ($monitors as $monitor) {
-            $status = $monitor->last_status ?? 'unknown';
+        $totalUp = 0;
+        $totalDown = 0;
+        $totalUnknown = 0;
+        
+        // Sort groups: those with down monitors first
+        $sortedGroups = $grouped->sortByDesc(function ($groupMonitors) {
+            return $groupMonitors->where('last_status', 'down')->count();
+        });
+        
+        foreach ($sortedGroups as $groupName => $groupMonitors) {
+            $group = $groupName ?? 'Uncategorized';
+            $total = $groupMonitors->count();
+            $up = $groupMonitors->where('last_status', 'up')->count();
+            $down = $groupMonitors->where('last_status', 'down')->count();
+            $unknown = $groupMonitors->where('last_status', '!=', 'up')
+                                     ->where('last_status', '!=', 'down')
+                                     ->count();
             
-            if ($status === 'up') {
-                $upMonitors[] = $monitor;
-                $upCount++;
-            } elseif ($status === 'down') {
-                $downMonitors[] = $monitor;
-                $downCount++;
+            $totalUp += $up;
+            $totalDown += $down;
+            $totalUnknown += $unknown;
+            
+            // Calculate health percentage
+            $healthPercent = $total > 0 ? ($up / $total) * 100 : 0;
+            
+            // Choose emoji based on health
+            if ($down > 0) {
+                $healthEmoji = '🔴';
+            } elseif ($healthPercent >= 95) {
+                $healthEmoji = '🟢';
+            } elseif ($healthPercent >= 80) {
+                $healthEmoji = '🟡';
             } else {
-                $unknownMonitors[] = $monitor;
-                $unknownCount++;
-            }
-        }
-        
-        // Show down monitors first (critical)
-        if (!empty($downMonitors)) {
-            $message .= "🔴 *DOWN ({$downCount})*\n";
-            $message .= "━━━━━━━━━━━━━━━━━\n";
-            foreach ($downMonitors as $monitor) {
-                $group = $monitor->group_name ?? 'Uncategorized';
-                $lastCheck = $monitor->last_checked_at 
-                    ? \Carbon\Carbon::parse($monitor->last_checked_at)->diffForHumans() 
-                    : 'Never';
-                $message .= "❌ *{$monitor->name}*\n";
-                $message .= "   📁 {$group} | 🔗 {$monitor->type}\n";
-                $message .= "   ⏱️ {$lastCheck}\n\n";
-            }
-        }
-        
-        // Show unknown monitors
-        if (!empty($unknownMonitors)) {
-            $message .= "⚪ *UNKNOWN ({$unknownCount})*\n";
-            $message .= "━━━━━━━━━━━━━━━━━\n";
-            foreach ($unknownMonitors as $monitor) {
-                $group = $monitor->group_name ?? 'Uncategorized';
-                $message .= "⚪ *{$monitor->name}*\n";
-                $message .= "   📁 {$group}\n\n";
-            }
-        }
-        
-        // Show up monitors (show first 5 only if many)
-        if (!empty($upMonitors)) {
-            $showCount = min(5, count($upMonitors));
-            $message .= "✅ *UP ({$upCount})*\n";
-            $message .= "━━━━━━━━━━━━━━━━━\n";
-            
-            for ($i = 0; $i < $showCount; $i++) {
-                $monitor = $upMonitors[$i];
-                $group = $monitor->group_name ?? 'Uncategorized';
-                $message .= "✅ *{$monitor->name}* | 📁 {$group}\n";
+                $healthEmoji = '🔴';
             }
             
-            if (count($upMonitors) > 5) {
-                $remaining = count($upMonitors) - 5;
-                $message .= "   ... dan {$remaining} monitor lainnya\n";
+            $message .= "{$healthEmoji} *{$group}*\n";
+            $message .= "┌─────────────────────\n";
+            $message .= "│ 📊 Total: {$total} monitors\n";
+            $message .= "│ 🟢 Up: {$up}";
+            
+            if ($down > 0) {
+                $message .= " | 🔴 Down: {$down}";
             }
+            if ($unknown > 0) {
+                $message .= " | ⚪ Unknown: {$unknown}";
+            }
+            
+            $message .= "\n│ 💚 Health: " . number_format($healthPercent, 1) . "%\n";
+            $message .= "└─────────────────────\n\n";
         }
         
-        $message .= "\n╔══════════════════════════╗\n";
-        $message .= "║      *SUMMARY*            ║\n";
-        $message .= "╚══════════════════════════╝\n";
+        // Overall summary
+        $overallHealth = $monitors->count() > 0 
+            ? ($totalUp / $monitors->count()) * 100 
+            : 0;
+        $summaryEmoji = $totalDown > 0 ? '🔴' : ($overallHealth >= 95 ? '🟢' : '🟡');
+        
+        $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        $message .= "{$summaryEmoji} *OVERALL SUMMARY*\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
         $message .= "📊 Total: *{$monitors->count()}* monitors\n";
-        $message .= "✅ Up: *{$upCount}* | ❌ Down: *{$downCount}*";
+        $message .= "📁 Groups: *{$grouped->count()}*\n";
+        $message .= "🟢 Up: *{$totalUp}* | 🔴 Down: *{$totalDown}*";
         
-        if ($unknownCount > 0) {
-            $message .= " | ⚪ Unknown: *{$unknownCount}*";
+        if ($totalUnknown > 0) {
+            $message .= " | ⚪ Unknown: *{$totalUnknown}*";
         }
+        
+        $message .= "\n💚 Overall Health: " . number_format($overallHealth, 1) . "%";
 
         $keyboard = [
             'inline_keyboard' => [
