@@ -158,23 +158,27 @@ class TelegramWebhookController extends Controller
         $message = "╔══════════════════════════╗\n";
         $message .= "║  🤖 *UPTIME MONITOR BOT*  ║\n";
         $message .= "╚══════════════════════════╝\n\n";
-        $message .= "Selamat datang! Bot ini akan mengirimkan notifikasi otomatis ketika ada service yang down atau up kembali.\n\n";
+        $message .= "Selamat datang! Bot ini mengirimkan notifikasi otomatis saat service down atau recovery.\n\n";
         
         $message .= "┌─────────────────────────┐\n";
         $message .= "│   📱 *MENU UTAMA*        │\n";
         $message .= "└─────────────────────────┘\n\n";
         
-        $message .= "Pilih menu di bawah untuk:\n";
-        $message .= "• 📊 Lihat status semua monitor\n";
-        $message .= "• 📋 Daftar monitor aktif\n";
-        $message .= "• 📁 Group monitoring\n";
-        $message .= "• 🚨 Laporan incident\n";
-        $message .= "• 📈 Statistik uptime\n";
-        $message .= "• ❓ Panduan lengkap\n\n";
+        $message .= "📊 *Status* - Health monitoring\n";
+        $message .= "📋 *Monitors* - Ringkasan semua\n";
+        $message .= "📁 *Groups* - Per kategori\n";
+        $message .= "🚨 *Incidents* - Riwayat masalah\n";
+        $message .= "📈 *Uptime* - Statistik\n";
+        $message .= "❓ *Help* - Panduan lengkap\n\n";
+        
+        $message .= "💡 *Quick Tips:*\n";
+        $message .= "• `/search api` untuk cari\n";
+        $message .= "• `/group nama` tanpa {kurung}\n";
+        $message .= "• Huruf besar/kecil sama saja\n\n";
         
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━\n";
-        $message .= "💡 *Chat ID:* `{$chatId}`\n";
-        $message .= "Gunakan Chat ID ini untuk setup notifikasi di dashboard.\n";
+        $message .= "🆔 *Chat ID:* `{$chatId}`\n";
+        $message .= "Setup notifikasi di dashboard\n";
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━";
 
         $keyboard = [
@@ -212,9 +216,14 @@ class TelegramWebhookController extends Controller
         $message .= "📈 `/uptime` - Statistik uptime\n\n";
         
         $message .= "🔎 *PENCARIAN:*\n\n";
-        $message .= "`/search {keyword}` - Cari monitor\n";
-        $message .= "`/monitor {nama}` - Detail monitor\n";
-        $message .= "`/group {nama}` - Monitor per group\n\n";
+        $message .= "`/search api` - Cari monitor\n";
+        $message .= "`/monitor API Server` - Detail monitor\n";
+        $message .= "`/group Production` - Monitor per group\n\n";
+        
+        $message .= "💡 *Tips:*\n";
+        $message .= "• Tidak perlu gunakan {kurung}\n";
+        $message .= "• Huruf besar/kecil sama saja\n";
+        $message .= "• Bisa pakai sebagian nama\n\n";
         
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
         $message .= "💬 *Notifikasi Otomatis:*\n";
@@ -709,15 +718,39 @@ class TelegramWebhookController extends Controller
 
     private function sendGroupMonitors(string $chatId, string $groupName): void
     {
-        if (empty(trim($groupName))) {
+        // Clean input: remove brackets, trim, etc
+        $cleanName = trim(str_replace(['{', '}', '[', ']', '(', ')'], '', $groupName));
+        
+        if (empty($cleanName)) {
             $this->sendMessage($chatId, "❌ Masukkan nama group!\n\nContoh: `/group Production`");
             return;
         }
         
-        $monitors = Monitor::where('group_name', 'LIKE', "%{$groupName}%")->get();
+        // Case-insensitive search
+        $monitors = Monitor::whereRaw('LOWER(group_name) LIKE LOWER(?)', ["%{$cleanName}%"])->get();
         
         if ($monitors->isEmpty()) {
-            $this->sendMessage($chatId, "❌ Group '*{$groupName}*' tidak ditemukan.\n\nGunakan `/groups` untuk melihat daftar group.");
+            // Suggest available groups
+            $availableGroups = Monitor::select('group_name')
+                ->distinct()
+                ->whereNotNull('group_name')
+                ->limit(5)
+                ->pluck('group_name')
+                ->toArray();
+            
+            $message = "❌ Group tidak ditemukan: `{$cleanName}`\n\n";
+            
+            if (!empty($availableGroups)) {
+                $message .= "📁 *Group yang tersedia:*\n";
+                foreach ($availableGroups as $group) {
+                    $message .= "• {$group}\n";
+                }
+                $message .= "\nℹ️ Ketik: `/group {nama_group}`";
+            } else {
+                $message .= "Gunakan `/groups` untuk melihat semua group.";
+            }
+            
+            $this->sendMessage($chatId, $message);
             return;
         }
         
@@ -788,15 +821,38 @@ class TelegramWebhookController extends Controller
 
     private function sendMonitorDetail(string $chatId, string $search): void
     {
-        if (empty(trim($search))) {
+        // Clean input
+        $cleanSearch = trim(str_replace(['{', '}', '[', ']', '(', ')'], '', $search));
+        
+        if (empty($cleanSearch)) {
             $this->sendMessage($chatId, "❌ Masukkan nama monitor!\n\nContoh: `/monitor API Server`");
             return;
         }
         
-        $monitor = Monitor::where('name', 'LIKE', "%{$search}%")->first();
+        // Case-insensitive search
+        $monitor = Monitor::whereRaw('LOWER(name) LIKE LOWER(?)', ["%{$cleanSearch}%"])->first();
         
         if (!$monitor) {
-            $this->sendMessage($chatId, "❌ Monitor '*{$search}*' tidak ditemukan.\n\nGunakan `/search {keyword}` untuk mencari monitor.");
+            // Suggest similar monitors
+            $similar = Monitor::whereRaw('LOWER(name) LIKE LOWER(?)', ["%{$cleanSearch}%"])
+                ->orWhereRaw('LOWER(target) LIKE LOWER(?)', ["%{$cleanSearch}%"])
+                ->limit(5)
+                ->get(['name', 'group_name']);
+            
+            $message = "❌ Monitor tidak ditemukan: `{$cleanSearch}`\n\n";
+            
+            if ($similar->isNotEmpty()) {
+                $message .= "🔍 *Monitor yang mirip:*\n";
+                foreach ($similar as $m) {
+                    $group = $m->group_name ?? 'Uncategorized';
+                    $message .= "• {$m->name} ({$group})\n";
+                }
+                $message .= "\nℹ️ Ketik: `/monitor {nama}`";
+            } else {
+                $message .= "Gunakan `/search {keyword}` untuk mencari monitor.";
+            }
+            
+            $this->sendMessage($chatId, $message);
             return;
         }
         
@@ -873,26 +929,40 @@ class TelegramWebhookController extends Controller
 
     private function searchMonitors(string $chatId, string $keyword): void
     {
-        if (empty(trim($keyword))) {
+        // Clean input
+        $cleanKeyword = trim(str_replace(['{', '}', '[', ']', '(', ')'], '', $keyword));
+        
+        if (empty($cleanKeyword)) {
             $this->sendMessage($chatId, "❌ Masukkan keyword pencarian!\n\nContoh: `/search api`");
             return;
         }
         
-        $monitors = Monitor::where('name', 'LIKE', "%{$keyword}%")
-            ->orWhere('target', 'LIKE', "%{$keyword}%")
-            ->orWhere('group_name', 'LIKE', "%{$keyword}%")
-            ->get();
+        // Case-insensitive search across multiple fields
+        $monitors = Monitor::where(function($query) use ($cleanKeyword) {
+            $query->whereRaw('LOWER(name) LIKE LOWER(?)', ["%{$cleanKeyword}%"])
+                  ->orWhereRaw('LOWER(target) LIKE LOWER(?)', ["%{$cleanKeyword}%"])
+                  ->orWhereRaw('LOWER(group_name) LIKE LOWER(?)', ["%{$cleanKeyword}%"]);
+        })->get();
         
         if ($monitors->isEmpty()) {
-            $this->sendMessage($chatId, "❌ Tidak ada monitor dengan keyword '*{$keyword}*'\n\nCoba keyword lain atau gunakan `/monitors` untuk melihat semua.");
+            // Count total monitors to give context
+            $totalMonitors = Monitor::count();
+            $message = "❌ Tidak ditemukan: `{$cleanKeyword}`\n\n";
+            $message .= "📊 Total {$totalMonitors} monitors tersedia\n\n";
+            $message .= "💡 *Tips pencarian:*\n";
+            $message .= "• Coba keyword lebih pendek\n";
+            $message .= "• Gunakan `/monitors` untuk ringkasan\n";
+            $message .= "• Gunakan `/groups` untuk cari per group";
+            
+            $this->sendMessage($chatId, $message);
             return;
         }
         
         $message = "╔══════════════════════════╗\n";
-        $message .= "║   🔍 *SEARCH RESULTS*     ║\n";
+        $message .= "║   🔍 *HASIL PENCARIAN*    ║\n";
         $message .= "╚══════════════════════════╝\n\n";
-        $message .= "Keyword: `{$keyword}`\n";
-        $message .= "Found: *{$monitors->count()}* monitors\n";
+        $message .= "🔎 Keyword: `{$cleanKeyword}`\n";
+        $message .= "📊 Ditemukan: *{$monitors->count()}* monitors\n";
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
         
         foreach ($monitors as $index => $monitor) {
@@ -901,23 +971,20 @@ class TelegramWebhookController extends Controller
             $statusEmoji = $status === 'up' ? '🟢' : ($status === 'down' ? '🔴' : '⚪');
             $enabled = $monitor->enabled ? '✅' : '⏸️';
             $group = $monitor->group_name ?? 'Uncategorized';
-            $type = strtoupper($monitor->type);
             
             $message .= "*{$num}.* {$enabled} {$statusEmoji} *{$monitor->name}*\n";
-            $message .= "   📁 {$group} | 🔗 {$type}\n";
-            $message .= "   🎯 {$monitor->target}\n";
+            $message .= "   📁 {$group}\n";
             
             if ($monitor->uptime_percentage !== null) {
-                $uptime = number_format($monitor->uptime_percentage, 2);
-                $message .= "   📈 {$uptime}%\n";
+                $uptime = number_format($monitor->uptime_percentage, 1);
+                $message .= "   📈 Uptime: {$uptime}%\n";
             }
             
             $message .= "\n";
         }
         
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
-        $message .= "💡 Untuk detail monitor:\n";
-        $message .= "`/monitor {nama}`";
+        $message .= "💡 Detail: `/monitor {nama}`";
         
         $this->sendMessage($chatId, $message);
     }
