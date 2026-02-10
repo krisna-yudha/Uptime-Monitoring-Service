@@ -317,7 +317,7 @@ class TelegramWebhookController extends Controller
                 $healthEmoji = '🔴';
             }
             
-            $message .= "{$healthEmoji} *{$group}*\n";
+            $message .= "{$healthEmoji} *Group: {$group}*\n";
             $message .= "┌─────────────────────\n";
             $message .= "│ 📊 Total: {$total} monitors\n";
             $message .= "│ 🟢 Up: {$up}";
@@ -388,6 +388,48 @@ class TelegramWebhookController extends Controller
 
     private function sendIncidents(string $chatId, string $filter = ''): void
     {
+        // If no filter specified, show menu first
+        if (empty(trim($filter))) {
+            $message = "╔══════════════════════════╗\n";
+            $message .= "║   🚨 *INCIDENT REPORT*    ║\n";
+            $message .= "╚══════════════════════════╝\n\n";
+            $message .= "📋 Pilih filter untuk melihat incident:\n\n";
+            $message .= "🔴 *Open* - Incident yang sedang berlangsung\n";
+            $message .= "✅ *Resolved* - Incident yang sudah selesai\n";
+            $message .= "📅 *Today* - Incident hari ini\n";
+            $message .= "📆 *This Week* - Incident minggu ini\n";
+            $message .= "📋 *All* - Semua incident (10 terakhir)\n\n";
+            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+            $message .= "💡 Atau gunakan command:\n";
+            $message .= "`/incidents open`\n";
+            $message .= "`/incidents resolved`\n";
+            $message .= "`/incidents today`\n";
+            $message .= "`/incidents week`\n";
+            $message .= "`/incidents all`";
+
+            $keyboard = [
+                'inline_keyboard' => [
+                    [
+                        ['text' => '🔴 Open', 'callback_data' => 'incidents:open'],
+                        ['text' => '✅ Resolved', 'callback_data' => 'incidents:resolved'],
+                    ],
+                    [
+                        ['text' => '📅 Today', 'callback_data' => 'incidents:today'],
+                        ['text' => '📆 This Week', 'callback_data' => 'incidents:week'],
+                    ],
+                    [
+                        ['text' => '📋 All', 'callback_data' => 'incidents:all'],
+                    ],
+                    [
+                        ['text' => '🔙 Back', 'callback_data' => 'status'],
+                    ],
+                ]
+            ];
+
+            $this->sendMessage($chatId, $message, $keyboard);
+            return;
+        }
+        
         $query = Incident::with('monitor')->orderBy('started_at', 'desc');
         
         // Apply filters
@@ -525,7 +567,7 @@ class TelegramWebhookController extends Controller
             $healthPercent = $total > 0 ? ($up / $total) * 100 : 0;
             $healthEmoji = $down > 0 ? '🔴' : ($healthPercent >= 95 ? '🟢' : '🟡');
             
-            $message .= "{$healthEmoji} *{$group}*\n";
+            $message .= "{$healthEmoji} *Group: {$group}*\n";
             $message .= "   📊 {$total} monitors | ✅ {$enabled} aktif\n";
             $message .= "   🟢 {$up} up | 🔴 {$down} down\n\n";
         }
@@ -722,7 +764,7 @@ class TelegramWebhookController extends Controller
             $healthPercent = $total > 0 ? ($up / $total) * 100 : 0;
             $healthEmoji = $healthPercent >= 95 ? '🟢' : ($healthPercent >= 80 ? '🟡' : '🔴');
             
-            $message .= "{$healthEmoji} *{$group}*\n";
+            $message .= "{$healthEmoji} *Group: {$group}*\n";
             $message .= "┌─────────────────────\n";
             $message .= "│ 📊 Total: {$total} monitors\n";
             $message .= "│ ✅ Active: {$active}\n";
