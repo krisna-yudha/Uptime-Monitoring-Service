@@ -70,7 +70,8 @@ class TelegramWebhookController extends Controller
         
         switch ($action) {
             case 'status':
-                $this->sendStatus($chatId);
+                $page = is_numeric($param) ? (int)$param : 0;
+                $this->sendStatus($chatId, $page);
                 break;
             case 'monitors':
                 $this->sendMonitors($chatId);
@@ -198,51 +199,39 @@ class TelegramWebhookController extends Controller
 
     private function sendHelp(string $chatId): void
     {
-        $message = "╔════════════════════════════╗\n";
-        $message .= "║ 📚 *PANDUAN PENGGUNAAN BOT* ║\n";
-        $message .= "╚════════════════════════════╝\n\n";
+        $message = "╔══════════════════════════╗\n";
+        $message .= "║  ❓ *PANDUAN BOT*         ║\n";
+        $message .= "╚══════════════════════════╝\n\n";
         
-        $message .= "┏━━━━━━━━━━━━━━━━━━━━━━━━┓\n";
-        $message .= "┃ 📊 *MONITORING*         ┃\n";
-        $message .= "┗━━━━━━━━━━━━━━━━━━━━━━━━┛\n";
-        $message .= "• `/status` - Status semua monitor\n";
-        $message .= "• `/monitors` - Daftar semua monitor\n";
-        $message .= "• `/groups` - Daftar group monitor\n";
-        $message .= "• `/group Production` - Monitor di group Production\n";
-        $message .= "• `/monitor API Server` - Detail monitor tertentu\n";
-        $message .= "• `/search api` - Cari monitor dengan keyword\n\n";
+        $message .= "🔍 *PERINTAH UTAMA:*\n\n";
         
-        $message .= "┏━━━━━━━━━━━━━━━━━━━━━━━━┓\n";
-        $message .= "┃ 🚨 *INCIDENT*           ┃\n";
-        $message .= "┗━━━━━━━━━━━━━━━━━━━━━━━━┛\n";
-        $message .= "• `/incidents` - 10 incident terbaru\n";
-        $message .= "• `/incidents open` - Incident aktif\n";
-        $message .= "• `/incidents resolved` - Sudah teratasi\n";
-        $message .= "• `/incidents today` - Incident hari ini\n\n";
+        $message .= "📊 `/status` - Status monitoring\n";
+        $message .= "📋 `/monitors` - Ringkasan monitor\n";
+        $message .= "📁 `/groups` - Daftar group\n";
+        $message .= "🚨 `/incidents` - Riwayat incident\n";
+        $message .= "📈 `/uptime` - Statistik uptime\n\n";
         
-        $message .= "┏━━━━━━━━━━━━━━━━━━━━━━━━┓\n";
-        $message .= "┃ 📈 *STATISTICS*         ┃\n";
-        $message .= "┗━━━━━━━━━━━━━━━━━━━━━━━━┛\n";
-        $message .= "• `/uptime` - Statistik uptime semua monitor\n";
-        $message .= "• `/ping` - Test koneksi bot\n\n";
+        $message .= "🔎 *PENCARIAN:*\n\n";
+        $message .= "`/search {keyword}` - Cari monitor\n";
+        $message .= "`/monitor {nama}` - Detail monitor\n";
+        $message .= "`/group {nama}` - Monitor per group\n\n";
         
-        $message .= "━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-        $message .= "💬 *Auto Notification:*\n";
-        $message .= "✓ Service down → Notifikasi instant\n";
-        $message .= "✓ Service up → Notifikasi recovery\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        $message .= "💬 *Notifikasi Otomatis:*\n";
+        $message .= "✓ Alert saat service down\n";
+        $message .= "✓ Alert saat service recovery\n";
         $message .= "✓ Real-time monitoring 24/7\n";
-        $message .= "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
-        $message .= "💡 Tip: Gunakan `/search` untuk cari monitor cepat!";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━━━━";
 
         $keyboard = [
             'inline_keyboard' => [
                 [
-                    ['text' => '📊 Lihat Status', 'callback_data' => 'status'],
-                    ['text' => '🚨 Lihat Incidents', 'callback_data' => 'incidents'],
+                    ['text' => '📊 Status', 'callback_data' => 'status'],
+                    ['text' => '🚨 Incidents', 'callback_data' => 'incidents'],
                 ],
                 [
-                    ['text' => '📁 Lihat Groups', 'callback_data' => 'groups'],
-                    ['text' => '📈 Lihat Uptime', 'callback_data' => 'uptime'],
+                    ['text' => '📁 Groups', 'callback_data' => 'groups'],
+                    ['text' => '📈 Uptime', 'callback_data' => 'uptime'],
                 ],
             ]
         ];
@@ -250,11 +239,11 @@ class TelegramWebhookController extends Controller
         $this->sendMessage($chatId, $message, $keyboard);
     }
 
-    private function sendStatus(string $chatId): void
+    private function sendStatus(string $chatId, int $page = 0): void
     {
-        $monitors = Monitor::where('enabled', true)->get();
+        $allMonitors = Monitor::where('enabled', true)->get();
         
-        if ($monitors->isEmpty()) {
+        if ($allMonitors->isEmpty()) {
             $this->sendMessage($chatId, "⚠️ Tidak ada monitor yang aktif.");
             return;
         }
@@ -264,18 +253,39 @@ class TelegramWebhookController extends Controller
         $message .= "╚══════════════════════════╝\n\n";
         
         // Group monitors by group_name
-        $grouped = $monitors->groupBy('group_name');
-        
-        $totalUp = 0;
-        $totalDown = 0;
-        $totalUnknown = 0;
+        $grouped = $allMonitors->groupBy('group_name');
         
         // Sort groups: those with down monitors first
         $sortedGroups = $grouped->sortByDesc(function ($groupMonitors) {
             return $groupMonitors->where('last_status', 'down')->count();
         });
         
-        foreach ($sortedGroups as $groupName => $groupMonitors) {
+        // Calculate totals from all monitors
+        $totalMonitors = $allMonitors->count();
+        $totalUp = $allMonitors->where('last_status', 'up')->count();
+        $totalDown = $allMonitors->where('last_status', 'down')->count();
+        $totalUnknown = $allMonitors->where('last_status', '!=', 'up')
+                                    ->where('last_status', '!=', 'down')
+                                    ->count();
+        $totalGroups = $grouped->count();
+        
+        // Pagination settings
+        $perPage = 10;
+        $groupsArray = $sortedGroups->values()->all();
+        $totalPages = (int)ceil($totalGroups / $perPage);
+        $currentPage = max(0, min($page, $totalPages - 1));
+        $offset = $currentPage * $perPage;
+        
+        // Get groups for current page
+        $pageGroups = array_slice($groupsArray, $offset, $perPage);
+        
+        // Show pagination info if there are multiple pages
+        if ($totalPages > 1) {
+            $message .= "📄 Halaman " . ($currentPage + 1) . " dari {$totalPages}\n";
+            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+        }
+        
+        foreach ($pageGroups as $groupName => $groupMonitors) {
             $group = $groupName ?? 'Uncategorized';
             $total = $groupMonitors->count();
             $up = $groupMonitors->where('last_status', 'up')->count();
@@ -283,10 +293,6 @@ class TelegramWebhookController extends Controller
             $unknown = $groupMonitors->where('last_status', '!=', 'up')
                                      ->where('last_status', '!=', 'down')
                                      ->count();
-            
-            $totalUp += $up;
-            $totalDown += $down;
-            $totalUnknown += $unknown;
             
             // Calculate health percentage
             $healthPercent = $total > 0 ? ($up / $total) * 100 : 0;
@@ -318,17 +324,17 @@ class TelegramWebhookController extends Controller
             $message .= "└─────────────────────\n\n";
         }
         
-        // Overall summary
-        $overallHealth = $monitors->count() > 0 
-            ? ($totalUp / $monitors->count()) * 100 
+        // Overall summary (from ALL monitors)
+        $overallHealth = $totalMonitors > 0 
+            ? ($totalUp / $totalMonitors) * 100 
             : 0;
         $summaryEmoji = $totalDown > 0 ? '🔴' : ($overallHealth >= 95 ? '🟢' : '🟡');
         
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
         $message .= "{$summaryEmoji} *OVERALL SUMMARY*\n";
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
-        $message .= "📊 Total: *{$monitors->count()}* monitors\n";
-        $message .= "📁 Groups: *{$grouped->count()}*\n";
+        $message .= "📊 Total: *{$totalMonitors}* monitors\n";
+        $message .= "📁 Groups: *{$totalGroups}*\n";
         $message .= "🟢 Up: *{$totalUp}* | 🔴 Down: *{$totalDown}*";
         
         if ($totalUnknown > 0) {
@@ -337,17 +343,35 @@ class TelegramWebhookController extends Controller
         
         $message .= "\n💚 Overall Health: " . number_format($overallHealth, 1) . "%";
 
-        $keyboard = [
-            'inline_keyboard' => [
-                [
-                    ['text' => '🔄 Refresh', 'callback_data' => 'status'],
-                    ['text' => '📁 Groups', 'callback_data' => 'groups'],
-                ],
-                [
-                    ['text' => '🚨 Incidents', 'callback_data' => 'incidents'],
-                    ['text' => '📈 Uptime', 'callback_data' => 'uptime'],
-                ],
-            ]
+        // Build keyboard with pagination
+        $keyboard = ['inline_keyboard' => []];
+        
+        // Pagination buttons
+        if ($totalPages > 1) {
+            $navButtons = [];
+            
+            if ($currentPage > 0) {
+                $navButtons[] = ['text' => '⬅️ Previous', 'callback_data' => 'status:' . ($currentPage - 1)];
+            }
+            
+            if ($currentPage < $totalPages - 1) {
+                $navButtons[] = ['text' => 'Next ➡️', 'callback_data' => 'status:' . ($currentPage + 1)];
+            }
+            
+            if (!empty($navButtons)) {
+                $keyboard['inline_keyboard'][] = $navButtons;
+            }
+        }
+        
+        // Regular buttons
+        $keyboard['inline_keyboard'][] = [
+            ['text' => '🔄 Refresh', 'callback_data' => 'status:' . $currentPage],
+            ['text' => '📁 Groups', 'callback_data' => 'groups'],
+        ];
+        
+        $keyboard['inline_keyboard'][] = [
+            ['text' => '🚨 Incidents', 'callback_data' => 'incidents'],
+            ['text' => '📈 Uptime', 'callback_data' => 'uptime'],
         ];
 
         $this->sendMessage($chatId, $message, $keyboard);
@@ -403,45 +427,33 @@ class TelegramWebhookController extends Controller
         foreach ($incidents as $index => $incident) {
             $num = $index + 1;
             $status = $incident->status === 'open' ? '🔴' : '✅';
-            $statusText = strtoupper($incident->status);
             $startedAt = \Carbon\Carbon::parse($incident->started_at);
             $group = $incident->monitor->group_name ?? 'Uncategorized';
             
             $message .= "*{$num}.* {$status} *{$incident->monitor->name}*\n";
-            $message .= "┌─────────────────────\n";
-            $message .= "│ 📁 Group: {$group}\n";
-            $message .= "│ 🔖 Status: {$statusText}\n";
-            $message .= "│ 📅 Started: {$startedAt->format('d/m H:i')}\n";
-            $message .= "│ ⏱️ {$startedAt->diffForHumans()}\n";
+            $message .= "   📁 {$group}\n";
+            $message .= "   📅 {$startedAt->format('d/m H:i')}";
             
             if ($incident->resolved_at) {
                 $resolvedAt = \Carbon\Carbon::parse($incident->resolved_at);
                 $duration = $startedAt->diff($resolvedAt);
-                $durationText = '';
                 
                 if ($duration->h > 0) {
-                    $durationText = "{$duration->h}h {$duration->i}m";
+                    $durationText = "{$duration->h}j {$duration->i}m";
                 } elseif ($duration->i > 0) {
-                    $durationText = "{$duration->i}m {$duration->s}s";
+                    $durationText = "{$duration->i}m";
                 } else {
                     $durationText = "{$duration->s}s";
                 }
                 
-                $message .= "│ ✅ Resolved: {$resolvedAt->format('d/m H:i')}\n";
-                $message .= "│ ⏳ Duration: {$durationText}\n";
+                $message .= " - " . $resolvedAt->format('H:i');
+                $message .= " (⏱️ {$durationText})\n";
             } else {
                 $downtime = $startedAt->diffForHumans(null, true);
-                $message .= "│ ⚠️ Downtime: {$downtime}\n";
+                $message .= " (⚠️ {$downtime})\n";
             }
             
-            if ($incident->error_message) {
-                $error = strlen($incident->error_message) > 40 
-                    ? substr($incident->error_message, 0, 40) . '...' 
-                    : $incident->error_message;
-                $message .= "│ ❗ Error: {$error}\n";
-            }
-            
-            $message .= "└─────────────────────\n\n";
+            $message .= "\n";
         }
 
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
@@ -486,46 +498,42 @@ class TelegramWebhookController extends Controller
         $grouped = $monitors->groupBy('group_name');
         
         $message = "╔══════════════════════════╗\n";
-        $message .= "║   📋 *DAFTAR MONITOR*     ║\n";
+        $message .= "║   📋 *RINGKASAN MONITOR*  ║\n";
         $message .= "╚══════════════════════════╝\n\n";
         
+        $totalMonitors = $monitors->count();
         $totalEnabled = $monitors->where('enabled', true)->count();
-        $totalDisabled = $monitors->where('enabled', false)->count();
+        $totalUp = $monitors->where('last_status', 'up')->count();
+        $totalDown = $monitors->where('last_status', 'down')->count();
 
         foreach ($grouped as $groupName => $groupMonitors) {
-            $group = $groupName ?? '📂 Uncategorized';
-            $count = $groupMonitors->count();
+            $group = $groupName ?? 'Uncategorized';
+            $total = $groupMonitors->count();
+            $enabled = $groupMonitors->where('enabled', true)->count();
+            $up = $groupMonitors->where('last_status', 'up')->count();
+            $down = $groupMonitors->where('last_status', 'down')->count();
             
-            $message .= "📁 *{$group}* ({$count})\n";
-            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+            $healthPercent = $total > 0 ? ($up / $total) * 100 : 0;
+            $healthEmoji = $down > 0 ? '🔴' : ($healthPercent >= 95 ? '🟢' : '🟡');
             
-            foreach ($groupMonitors as $monitor) {
-                $enabled = $monitor->enabled ? '✅' : '⏸️';
-                $status = $monitor->last_status ?? '⚪';
-                $statusEmoji = $status === 'up' ? '✅' : ($status === 'down' ? '❌' : '⚪');
-                $type = strtoupper($monitor->type);
-                
-                $message .= "{$enabled} {$statusEmoji} *{$monitor->name}*\n";
-                $message .= "   🔗 {$type} | ⏱️ {$monitor->interval_seconds}s\n";
-            }
-            
-            $message .= "\n";
+            $message .= "{$healthEmoji} *{$group}*\n";
+            $message .= "   📊 {$total} monitors | ✅ {$enabled} aktif\n";
+            $message .= "   🟢 {$up} up | 🔴 {$down} down\n\n";
         }
 
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
-        $message .= "📊 *Summary:*\n";
-        $message .= "Total: *{$monitors->count()}* monitors\n";
-        $message .= "✅ Active: *{$totalEnabled}* | ⏸️ Paused: *{$totalDisabled}*\n";
+        $message .= "📊 *TOTAL SUMMARY*\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        $message .= "📋 Total: *{$totalMonitors}* monitors\n";
+        $message .= "✅ Aktif: *{$totalEnabled}*\n";
+        $message .= "🟢 Up: *{$totalUp}* | 🔴 Down: *{$totalDown}*\n";
         $message .= "📁 Groups: *{$grouped->count()}*\n\n";
-        $message .= "💡 Gunakan:\n";
-        $message .= "`/groups` - Lihat semua group\n";
-        $message .= "`/group {nama}` - Monitor per group\n";
-        $message .= "`/monitor {nama}` - Detail monitor";
+        $message .= "💡 Lihat detail: `/group {nama}`";
 
         $keyboard = [
             'inline_keyboard' => [
                 [
-                    ['text' => '📁 Lihat Groups', 'callback_data' => 'groups'],
+                    ['text' => '📁 Groups', 'callback_data' => 'groups'],
                     ['text' => '📊 Status', 'callback_data' => 'status'],
                 ],
                 [
@@ -554,33 +562,33 @@ class TelegramWebhookController extends Controller
         $count = 0;
         
         // Group by uptime range
+        $poor = [];     // < 90%
+        $warning = [];  // 90-95%
+        $good = [];     // 95-99%
         $excellent = []; // >= 99%
-        $good = []; // 95-99%
-        $warning = []; // 90-95%
-        $poor = []; // < 90%
 
         foreach ($monitors as $monitor) {
             $uptime = $monitor->uptime_percentage ?? 0;
             
-            if ($uptime >= 99) {
-                $excellent[] = ['name' => $monitor->name, 'uptime' => $uptime];
-            } elseif ($uptime >= 95) {
-                $good[] = ['name' => $monitor->name, 'uptime' => $uptime];
-            } elseif ($uptime >= 90) {
-                $warning[] = ['name' => $monitor->name, 'uptime' => $uptime];
-            } else {
+            if ($uptime < 90) {
                 $poor[] = ['name' => $monitor->name, 'uptime' => $uptime];
+            } elseif ($uptime < 95) {
+                $warning[] = ['name' => $monitor->name, 'uptime' => $uptime];
+            } elseif ($uptime < 99) {
+                $good[] = ['name' => $monitor->name, 'uptime' => $uptime];
+            } else {
+                $excellent[] = ['name' => $monitor->name, 'uptime' => $uptime];
             }
             
             $totalUptime += $uptime;
             $count++;
         }
         
-        // Show poor first (critical)
+        // Show critical issues first
         if (!empty($poor)) {
-            $message .= "🔴 *POOR (< 90%)*\n";
+            $message .= "🔴 *PERLU PERHATIAN (< 90%)*\n";
             foreach ($poor as $m) {
-                $message .= "   • {$m['name']}: " . number_format($m['uptime'], 2) . "%\n";
+                $message .= "   • {$m['name']}: " . number_format($m['uptime'], 1) . "%\n";
             }
             $message .= "\n";
         }
@@ -588,39 +596,28 @@ class TelegramWebhookController extends Controller
         if (!empty($warning)) {
             $message .= "🟡 *WARNING (90-95%)*\n";
             foreach ($warning as $m) {
-                $message .= "   • {$m['name']}: " . number_format($m['uptime'], 2) . "%\n";
+                $message .= "   • {$m['name']}: " . number_format($m['uptime'], 1) . "%\n";
             }
             $message .= "\n";
         }
         
+        // Summary counts only for good and excellent
         if (!empty($good)) {
-            $message .= "🟢 *GOOD (95-99%)*\n";
-            foreach ($good as $m) {
-                $message .= "   • {$m['name']}: " . number_format($m['uptime'], 2) . "%\n";
-            }
-            $message .= "\n";
+            $message .= "🟢 *GOOD (95-99%):* " . count($good) . " monitors\n\n";
         }
         
         if (!empty($excellent)) {
-            $message .= "💚 *EXCELLENT (≥ 99%)*\n";
-            $showCount = min(5, count($excellent));
-            for ($i = 0; $i < $showCount; $i++) {
-                $m = $excellent[$i];
-                $message .= "   • {$m['name']}: " . number_format($m['uptime'], 2) . "%\n";
-            }
-            if (count($excellent) > 5) {
-                $remaining = count($excellent) - 5;
-                $message .= "   ... dan {$remaining} monitor lainnya\n";
-            }
-            $message .= "\n";
+            $message .= "💚 *EXCELLENT (≥ 99%):* " . count($excellent) . " monitors\n\n";
         }
 
         $avgUptime = $count > 0 ? $totalUptime / $count : 0;
         $avgEmoji = $avgUptime >= 99 ? '💚' : ($avgUptime >= 95 ? '🟢' : ($avgUptime >= 90 ? '🟡' : '🔴'));
         
         $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
-        $message .= "{$avgEmoji} *Average Uptime:* " . number_format($avgUptime, 2) . "%\n";
-        $message .= "📊 Total Monitors: {$count}";
+        $message .= "{$avgEmoji} *Rata-rata Uptime*\n";
+        $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        $message .= "📊 " . number_format($avgUptime, 2) . "%\n";
+        $message .= "📋 {$count} monitors aktif";
 
         $keyboard = [
             'inline_keyboard' => [
