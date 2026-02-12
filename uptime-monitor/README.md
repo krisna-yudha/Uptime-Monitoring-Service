@@ -43,7 +43,7 @@ sudo supervisorctl start uptime-monitor:*
 - ✅ Jobs auto-cleanup setiap **30 menit** (no manual intervention)
 - ✅ Alert otomatis jika queue overflow
 
-**📖 Full Documentation:** [CARA_SETTING_MONITORING.md](CARA_SETTING_MONITORING.md)  
+**📖 Full Documentation:** [CARA_SETTING_MONITORING.md](docs/CARA_SETTING_MONITORING.md)  
 **📋 Quick Reference:** [QUICK_START_OPTIMIZED.txt](QUICK_START_OPTIMIZED.txt)
 
 ---
