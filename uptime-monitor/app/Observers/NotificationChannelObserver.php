@@ -56,10 +56,20 @@ class NotificationChannelObserver
                 return;
             }
 
-            // Get webhook URL from APP_URL
-            $webhookUrl = config('app.url') . '/api/telegram/webhook';
+            // Get webhook URL from APP_URL with smart detection
+            $appUrl = config('app.url');
+            
+            // Smart detection: if APP_URL contains "app.", replace with "api."
+            // Example: https://app.gentz.me -> https://api.gentz.me
+            if (strpos($appUrl, '://app.') !== false) {
+                $webhookBaseUrl = str_replace('://app.', '://api.', $appUrl);
+            } else {
+                $webhookBaseUrl = $appUrl;
+            }
+            
+            $webhookUrl = rtrim($webhookBaseUrl, '/') . '/api/telegram/webhook';
 
-            // Skip if APP_URL is localhost (development without ngrok)
+            // Skip if webhook URL is localhost (development without ngrok)
             if (strpos($webhookUrl, 'localhost') !== false && strpos($webhookUrl, 'https://') !== 0) {
                 Log::info('Development environment detected (localhost), skipping auto webhook setup', [
                     'channel_id' => $channel->id,

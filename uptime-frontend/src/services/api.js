@@ -29,6 +29,12 @@ const api = axios.create({
   }
 })
 
+// Export baseURL for external use
+export const getApiBaseUrl = () => {
+  // Remove '/api' suffix to get the base domain
+  return baseURL.replace(/\/api$/, '')
+}
+
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
@@ -102,7 +108,7 @@ export default {
     delete: (id) => api.delete(`/notification-channels/${id}`),
     test: (id) => api.post(`/notification-channels/${id}/test`),
     toggle: (id) => api.post(`/notification-channels/${id}/toggle`),
-    connect: (id) => api.post(`/notification-channels/${id}/connect`)
+    connect: (id, data) => api.post(`/notification-channels/${id}/connect`, data)
   },
 
   // Monitor checks

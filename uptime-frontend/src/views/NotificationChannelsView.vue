@@ -770,7 +770,13 @@ async function connectTelegram(channelId) {
   try {
     showNotif('Connecting Telegram bot...', 'info')
     
-    const response = await api.notificationChannels.connect(channelId)
+    // Auto-detect API URL from current axios configuration
+    const apiModule = await import('../services/api')
+    const webhookBaseUrl = apiModule.getApiBaseUrl()
+    
+    const response = await api.notificationChannels.connect(channelId, {
+      webhook_url: webhookBaseUrl
+    })
     
     if (response.data.success) {
       const data = response.data.data

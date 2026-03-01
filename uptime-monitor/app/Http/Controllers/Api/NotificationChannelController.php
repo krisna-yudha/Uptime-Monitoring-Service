@@ -380,7 +380,7 @@ class NotificationChannelController extends Controller
     /**
      * Connect/Setup Telegram bot webhook and test connection
      */
-    public function connectTelegram(NotificationChannel $notificationChannel): JsonResponse
+    public function connectTelegram(Request $request, NotificationChannel $notificationChannel): JsonResponse
     {
         if ($notificationChannel->type !== 'telegram') {
             return response()->json([
@@ -416,8 +416,32 @@ class NotificationChannelController extends Controller
             $botInfo = $botInfoResponse->json();
             $botUsername = $botInfo['result']['username'] ?? 'Unknown';
 
-            // Setup webhook
-            $webhookUrl = config('app.url') . '/api/telegram/webhook';
+            // Setup webhook - use webhook_url from request or smart detect from APP_URL
+            if ($request->has('webhook_url')) {
+                // Use webhook URL from frontend (auto-detected)
+                $webhookBaseUrl = $request->input('webhook_url');
+                Log::info('Using webhook URL from request', ['url' => $webhookBaseUrl]);
+            } else {
+                // Fallback: Smart detection from APP_URL
+                $appUrl = config('app.url');
+                
+                // If APP_URL contains "app.", replace with "api."
+                // Example: https://app.gentz.me -> https://api.gentz.me
+                if (strpos($appUrl, '://app.') !== false) {
+                    $webhookBaseUrl = str_replace('://app.', '://api.', $appUrl);
+                } else {
+                    $webhookBaseUrl = $appUrl;
+                }
+                
+                Log::info('Using smart-detected webhook URL', ['url' => $webhookBaseUrl]);
+            }
+            
+            $webhookUrl = rtrim($webhookBaseUrl, '/') . '/api/telegram/webhook';
+            
+            Log::info('Setting up Telegram webhook', [
+                'channel_id' => $notificationChannel->id,
+                'webhook_url' => $webhookUrl
+            ]);
             
             $webhookResponse = Http::withOptions(['verify' => false])
                 ->timeout(30)
