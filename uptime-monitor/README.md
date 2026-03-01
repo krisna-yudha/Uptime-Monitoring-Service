@@ -43,8 +43,8 @@ sudo supervisorctl start uptime-monitor:*
 - ✅ Jobs auto-cleanup setiap **30 menit** (no manual intervention)
 - ✅ Alert otomatis jika queue overflow
 
-**📖 Full Documentation:** [CARA_SETTING_MONITORING.md](CARA_SETTING_MONITORING.md)  
-**📋 Quick Reference:** [QUICK_START_OPTIMIZED.txt](QUICK_START_OPTIMIZED.txt)
+**📖 Full Documentation:** [CARA_SETTING_MONITORING.md](docs/CARA_SETTING_MONITORING.md)  
+**📋 Quick Reference:** [QUICK_START_OPTIMIZED.txt](docs/QUICK_START_OPTIMIZED.txt)
 
 ---
 
@@ -307,18 +307,18 @@ Supported notification types:
 
 ## 📖 Documentation
 
-- [QUICK_START.md](QUICK_START.md) - Quick start guide
-- **[CARA_SETTING_MONITORING.md](CARA_SETTING_MONITORING.md) - Setup log cepat & auto-cleanup** ⭐
-- **[QUICK_START_OPTIMIZED.txt](QUICK_START_OPTIMIZED.txt) - Quick reference optimized setup**
-- **[OPTIMIZED_MONITORING_SETUP.md](OPTIMIZED_MONITORING_SETUP.md) - Full optimized setup guide**
-- [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) - Complete production setup guide
-- [RESEARCH_AND_DEVELOPMENT.md](RESEARCH_AND_DEVELOPMENT.md) - RnD guide for developers
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture & diagrams
-- [DEVELOPER_QUICK_REFERENCE.md](DEVELOPER_QUICK_REFERENCE.md) - Quick reference for developers
-- [NOTIFICATION_SYSTEM_READY.md](NOTIFICATION_SYSTEM_READY.md) - Notification system docs
-- [TROUBLESHOOTING_NOTIFICATIONS.md](TROUBLESHOOTING_NOTIFICATIONS.md) - Troubleshooting
-- [WORKERS_README.md](WORKERS_README.md) - Worker documentation
-- [QUEUE_QUICK_REFERENCE.txt](QUEUE_QUICK_REFERENCE.txt) - Queue monitoring commands
+- [QUICK_START.md](docs/QUICK_START.md) - Quick start guide
+- **[CARA_SETTING_MONITORING.md](docs/CARA_SETTING_MONITORING.md) - Setup log cepat & auto-cleanup** ⭐
+- **[QUICK_START_OPTIMIZED.txt](docs/QUICK_START_OPTIMIZED.txt) - Quick reference optimized setup**
+- **[OPTIMIZED_MONITORING_SETUP.md](docs/OPTIMIZED_MONITORING_SETUP.md) - Full optimized setup guide**
+- [PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md) - Complete production setup guide
+- [RESEARCH_AND_DEVELOPMENT.md](docs/RESEARCH_AND_DEVELOPMENT.md) - RnD guide for developers
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture & diagrams
+- [DEVELOPER_QUICK_REFERENCE.md](docs/DEVELOPER_QUICK_REFERENCE.md) - Quick reference for developers
+- [NOTIFICATION_SYSTEM_READY.md](docs/NOTIFICATION_SYSTEM_READY.md) - Notification system docs
+- [TROUBLESHOOTING_NOTIFICATIONS.md](docs/TROUBLESHOOTING_NOTIFICATIONS.md) - Troubleshooting
+- [WORKERS_README.md](docs/WORKERS_README.md) - Worker documentation
+- [QUEUE_QUICK_REFERENCE.txt](docs/QUEUE_QUICK_REFERENCE.txt) - Queue monitoring commands
 
 ---
 
