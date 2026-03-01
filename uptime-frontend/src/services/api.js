@@ -29,7 +29,7 @@ const api = axios.create({
   }
 })
 
-// Export baseURL for external  
+// Export baseURL for external   ss
 export const getApiBaseUrl = () => {
   // Remove '/api' suffix to get the base domain
   return baseURL.replace(/\/api$/, '')
